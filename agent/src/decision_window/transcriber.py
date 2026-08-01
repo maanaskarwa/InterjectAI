@@ -41,7 +41,7 @@ class ParticipantTranscriber:
         self._stream_started_ms = time.time_ns() // 1_000_000
 
     async def run(self, track: rtc.Track) -> None:
-        audio = rtc.AudioStream(track, sample_rate=16_000, num_channels=1)
+        audio = rtc.AudioStream(track, sample_rate=16_000, num_channels=1, frame_size_ms=100)
         speech = self._stt.stream()
 
         async def feed() -> None:
