@@ -1,0 +1,14 @@
+curl --request POST \
+  --url https://api.inworld.ai/tts/v1/voice:stream \
+ --header "Authorization: Basic ${INWORLD_API_KEY}" \
+ --header 'Content-Type: application/json' \
+ --data '{
+  "text": "Welcome to the Inworld TTS Playground. Type or paste your text here to hear how our advanced voice models bring your words to life.",
+  "voice_id": "Sarah",
+  "audio_config": {
+    "audio_encoding": "MP3"
+  },
+  "model_id": "inworld-tts-1.5-max"
+}' \
+  --no-buffer \
+  | jq -r --unbuffered '(.result.audioContent? // .audioContent? // empty)' | base64 -d > output.mp3
