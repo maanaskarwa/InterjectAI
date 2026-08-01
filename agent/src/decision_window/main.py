@@ -29,7 +29,7 @@ def configured_deadline() -> float:
     return value
 
 
-@server.rtc_session(agent_name=os.getenv("LIVEKIT_AGENT_NAME", "decision-window"))
+@server.rtc_session(agent_name=os.getenv("LIVEKIT_AGENT_NAME", "interject-build"))
 async def decision_window(ctx: JobContext) -> None:
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 

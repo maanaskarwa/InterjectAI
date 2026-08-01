@@ -51,7 +51,7 @@ export async function onRequestPost({ request, env }: Context): Promise<Response
   })
   if (body.dispatchAgent === true) {
     token.roomConfig = new RoomConfiguration({
-      agents: [new RoomAgentDispatch({ agentName: env.LIVEKIT_AGENT_NAME || 'decision-window' })],
+      agents: [new RoomAgentDispatch({ agentName: env.LIVEKIT_AGENT_NAME || 'interject-build' })],
     })
   }
 
