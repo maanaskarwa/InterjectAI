@@ -23,6 +23,7 @@ class TranscriberTests(unittest.IsolatedAsyncioTestCase):
     def test_agent_is_excluded(self) -> None:
         self.assertFalse(should_transcribe("decision-window"))
         self.assertFalse(should_transcribe("decision-window-worker"))
+        self.assertFalse(should_transcribe("agent-AJ_example"))
         self.assertTrue(should_transcribe("alice-123"))
 
     async def test_tracks_keep_independent_attribution(self) -> None:

@@ -18,7 +18,7 @@ SpeechCallback = Callable[[], None]
 
 
 def should_transcribe(identity: str) -> bool:
-    return not identity.startswith("decision-window")
+    return not identity.startswith(("decision-window", "agent-"))
 
 
 class ParticipantTranscriber:
