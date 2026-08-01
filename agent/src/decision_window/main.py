@@ -42,8 +42,9 @@ async def decision_window(ctx: JobContext) -> None:
     session = AgentSession(
         tts=inworld.TTS(
             voice=os.getenv("INWORLD_VOICE", "Sarah"),
-            model=os.getenv("INWORLD_TTS_MODEL", "inworld-tts-1.5-max"),
+            model=os.getenv("INWORLD_TTS_MODEL", "inworld-tts-2"),
             speaking_rate=1.2,
+            delivery_mode="BALANCED",
         ),
     )
     await session.start(
