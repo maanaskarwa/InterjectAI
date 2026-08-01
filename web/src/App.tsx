@@ -23,11 +23,9 @@ import {
 type Connection = { token: string; serverUrl: string; room: string; name: string; identity: string }
 
 const env = import.meta.env
-const tokenEndpoint = env.VITE_LIVEKIT_TOKEN_ENDPOINT as string | undefined
-const sandboxId = env.VITE_LIVEKIT_SANDBOX_ID as string | undefined
+const tokenEndpoint = (env.VITE_LIVEKIT_TOKEN_ENDPOINT as string | undefined) || '/api/token'
 const fallbackServerUrl = env.VITE_LIVEKIT_URL as string | undefined
 const defaultRoom = (env.VITE_DEFAULT_ROOM as string | undefined) || 'decision-window-demo'
-const agentName = (env.VITE_LIVEKIT_AGENT_NAME as string | undefined) || 'decision-window'
 
 function identityFor(name: string) {
   const key = 'decision-window.identity'
@@ -40,21 +38,15 @@ function identityFor(name: string) {
 }
 
 async function getConnection(room: string, name: string, create: boolean): Promise<Connection> {
-  const endpoint = tokenEndpoint || (sandboxId ? 'https://cloud-api.livekit.io/api/sandbox/connection-details' : '')
-  if (!endpoint) throw new Error('Set VITE_LIVEKIT_TOKEN_ENDPOINT or VITE_LIVEKIT_SANDBOX_ID')
-
   const identity = identityFor(name)
-  const response = await fetch(endpoint, {
+  const response = await fetch(tokenEndpoint, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(sandboxId ? { 'X-Sandbox-ID': sandboxId } : {}),
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       roomName: room,
       participantName: name,
       participantIdentity: identity,
-      ...(create ? { agentName } : {}),
+      dispatchAgent: create,
     }),
   })
   if (!response.ok) throw new Error(`Token request failed (${response.status})`)

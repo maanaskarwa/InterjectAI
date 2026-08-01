@@ -1,0 +1,5 @@
+# Copy to web/.dev.vars for `wrangler pages dev`; never commit the real file.
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=
+LIVEKIT_API_SECRET=
+LIVEKIT_AGENT_NAME=decision-window

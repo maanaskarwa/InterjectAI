@@ -25,7 +25,7 @@ The research input remains generic: the rehearsed LiveKit question proves reliab
 
 ### Required
 
-- Static React/Vite frontend on Cloudflare Pages
+- React/Vite frontend on Cloudflare Pages with one `/api/token` Pages Function
 - LiveKit Cloud audio room with separate participant tracks
 - Local Python worker connected outbound to LiveKit Cloud
 - One Inworld streaming STT stream per human track
@@ -50,7 +50,7 @@ The research input remains generic: the rehearsed LiveKit question proves reliab
 - Zoom/Meet/Teams integration
 - Diarization or shared-microphone support
 - Video, recording, login, database, persistent history, vector database
-- Custom WebRTC/signalling/token backend
+- Standalone backend beyond the minimal Cloudflare token function
 - Production authentication or deployment of the Python worker
 
 Add excluded features only after the acceptance test passes twice.
@@ -61,12 +61,12 @@ Add excluded features only after the acceptance test passes twice.
 Browser A mic ─┐
 Browser B mic ─┼─> LiveKit Cloud <─> local Python worker
                │                         ├─ one Inworld STT stream per human track
-Static web <────┘                         ├─ Bright Data search/fetch
+Pages web + /api/token <────┘             ├─ Bright Data Discover
   receives room data events              ├─ OpenAI grounded synthesis
                                          └─ Inworld TTS agent audio
 ```
 
-LiveKit is the realtime transport and event channel, not the RAG/data layer. Bright Data supplies public-web evidence. No separately hosted backend is needed: the frontend and local worker both make outbound connections to LiveKit Cloud.
+LiveKit is the realtime transport and event channel, not the RAG/data layer. Bright Data supplies public-web evidence. New LiveKit sandboxes are deprecated, so a minimal Cloudflare Pages Function mints participant tokens with server-side secrets; there is still no separately deployed application backend.
 
 ## Repository shape
 
@@ -138,10 +138,9 @@ Only final transcripts enter history or launch research. A partial transcript ma
 The user handles account/browser setup while the integrator scaffolds the repository. Store secrets only in `agent/.env`; commit names and placeholders only.
 
 1. **LiveKit Cloud**
-   - Create a temporary project.
-   - Enable the documented development/sandbox token flow.
-   - Record URL, API key, API secret, and frontend sandbox/token-server identifier.
-   - Verify the current official create-vs-join agent-dispatch mechanism before coding against it.
+   - Create a temporary project and record URL, API key, and API secret.
+   - Put those values in ignored local env files and Cloudflare server-side secrets only.
+   - Use the `/api/token` Pages Function; Create embeds one `RoomAgentDispatch`, while Join mints an ordinary participant token.
 2. **Inworld** — access available; rotate the exposed credential first
    - Revoke/rotate the credential that appeared in the added examples and this session before making any request.
    - Store only the replacement credential in `agent/.env`; never commit it.
@@ -268,8 +267,8 @@ Integrator:
 
 ### 5:00–5:45 — Public deployment and network test
 
-- Deploy the static frontend to a dedicated Cloudflare Pages project.
-- Keep all provider keys backend-only.
+- Deploy the frontend and `/api/token` function to a dedicated Cloudflare Pages project.
+- Keep all provider keys in the local worker or encrypted Cloudflare server-side secrets.
 - Test one browser on normal Wi-Fi and one on a phone hotspot/mobile network.
 - Keep the Python worker local; disable laptop sleep.
 - Confirm browser autoplay is unlocked by the explicit Join action.
@@ -300,7 +299,7 @@ Fix blockers only. No feature additions.
 - Record one successful backup video.
 - Keep both laptops on headphones to prevent acoustic cross-contamination.
 - Warm the room and worker before judging.
-- Disable the temporary LiveKit sandbox token server after the event.
+- Rotate or remove temporary LiveKit and Cloudflare secrets after the event.
 
 ## Fallback ladder
 
@@ -311,7 +310,7 @@ Use the first level that preserves a coherent demo; do not hide a fallback as a 
 3. **Bright Data issue:** use OpenAI’s supported web-search tool if available; otherwise use a clearly labelled cached Bright Data response for the rehearsed question.
 4. **Automatic trigger issue:** manual **Research last turn** button.
 5. **Automatic interruption issue:** manual **Stop agent** button.
-6. **Cloudflare issue:** serve on the local network with Vite `--host`; keep LiveKit Cloud and the local worker unchanged.
+6. **Cloudflare issue:** mint short-lived participant tokens locally and serve Vite on the LAN; never expose the LiveKit secret to the browser.
 7. **Voice issue:** preserve the cited card and deadline behavior; do not read uncited or expired text aloud.
 
 ## Small checks, not a test suite
