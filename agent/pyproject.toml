@@ -5,6 +5,7 @@ description = "Deadline-aware voice research participant"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
+    "brightdata-sdk>=2.5.0",
     "httpx>=0.28.1",
     "livekit-agents>=1.6.7",
     "livekit-plugins-inworld>=1.6.7",
