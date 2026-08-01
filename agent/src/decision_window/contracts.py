@@ -14,7 +14,9 @@ EventType = Literal[
     "research.expired",
     "research.failed",
     "answer.card",
+    "control.dismiss",
     "control.research",
+    "control.speak",
     "control.stop",
 ]
 
@@ -46,7 +48,7 @@ class ResearchPayload(BaseModel):
     asker_id: str
     asker_name: str
     query: str
-    route: Literal["QUICK"] = "QUICK"
+    route: Literal["INSTANT", "QUICK"] = "QUICK"
     status: Literal["searching", "completed", "expired", "failed"]
     created_at_ms: int = Field(ge=0)
     deadline_at_ms: int = Field(ge=0)

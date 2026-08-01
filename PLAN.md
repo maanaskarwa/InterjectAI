@@ -32,12 +32,13 @@ The research input remains generic: the rehearsed LiveKit question proves reliab
 - Speaker-labelled partial/final transcripts
 - LLM router evaluates every final turn against the last 16 speaker-labelled turns
 - Explicit wake phrase remains a deterministic fallback, not the primary route
-- One real route: `QUICK`, with a deterministic 30-second deadline
-- Bright Data search with one result to absorb provider tail latency
+- `INSTANT` for stable common knowledge; `QUICK` with a deterministic 30-second deadline for current evidence
+- Bright Data search with one result on `QUICK` to absorb provider tail latency
 - OpenAI synthesis receives retrieved evidence plus the same transcript snapshot
 - Cited answer card before voice output
-- Inworld TTS-2, one short answer at a time
-- Automatic barge-in on human speech-start/interim speech
+- Multiple pending answer cards with per-answer **Speak** and **Dismiss** controls
+- Inworld TTS-2, released explicitly by UI or a named voice command
+- Automatic barge-in on human speech-start/interim speech; interrupted answers remain queued
 - Expired-result suppression
 - Manual **Research last turn** and **Stop agent** controls as demo fallbacks
 
@@ -245,14 +246,16 @@ Integrator wires transcript → research → room data event.
 
 Media worker:
 
-- Publish the answer card before calling TTS.
-- Speak only when the job is unexpired and confidence is at least 0.75.
-- Limit speech to one sentence and at most 25 words.
-- Keep one active speech handle.
+- Publish every answer card immediately and retain it independently of voice state.
+- Queue multiple completed answers; do not speak automatically.
+- Release a selected answer through its **Speak** button or release the oldest through a named voice command.
+- Briefly identify the earlier question before giving its concise answer.
+- **Dismiss** removes only queued voice delivery; the card remains visible.
+- Keep one active speech handle and preserve an interrupted answer in the queue.
 - Interrupt on a human speech-start event or first substantive interim transcript.
 - Expose manual `interrupt()` for the Stop button.
 
-**Gate 4 at 4:20:** both browsers hear one generated answer; speaking over it stops it reliably.
+**Gate 4 at 4:20:** both browsers hear a released answer; speaking over it stops it while leaving it available to retry.
 
 ### 4:20–5:00 — Decision Window behavior
 

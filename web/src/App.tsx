@@ -132,10 +132,11 @@ function Meeting({ connection, preview = false, onLeave }: { connection: Connect
     demo: { job_id: 'demo', asker_name: 'Maanas', query: 'whether LiveKit supports self-hosting', route: 'QUICK', status: 'completed', deadline_at_ms: Date.now() + 5000 },
   } : {})
   const [answers, setAnswers] = useState<Answer[]>(preview ? [{
-    job_id: 'demo', concise_answer: 'LiveKit can be self-hosted; its documentation provides deployment guides and infrastructure requirements.', confidence: 0.93,
+    job_id: 'demo', question: 'Does LiveKit support self-hosting?', concise_answer: 'LiveKit can be self-hosted; its documentation provides deployment guides and infrastructure requirements.', confidence: 0.93,
     citations: [{ title: 'LiveKit self-hosting documentation', url: 'https://docs.livekit.io/home/self-hosting/' }],
   }] : [])
   const [agent, setAgent] = useState(preview ? 'online' : 'waiting')
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const [now, setNow] = useState(Date.now())
 
   useEffect(() => {
@@ -185,7 +186,10 @@ function Meeting({ connection, preview = false, onLeave }: { connection: Connect
   )
   const latest = finals.at(-1)?.text || ''
 
-  const control = async (type: 'control.research' | 'control.stop') => {
+  const control = async (
+    type: 'control.dismiss' | 'control.research' | 'control.speak' | 'control.stop',
+    jobId?: string,
+  ) => {
     await send(
       new TextEncoder().encode(JSON.stringify({
         type,
@@ -194,10 +198,16 @@ function Meeting({ connection, preview = false, onLeave }: { connection: Connect
           asker_id: connection.identity,
           asker_name: connection.name,
           ...(type === 'control.research' ? { query: latest } : {}),
+          ...(jobId ? { job_id: jobId } : {}),
         },
       })),
       { reliable: true, topic },
     )
+  }
+
+  const dismiss = async (jobId: string) => {
+    await control('control.dismiss', jobId)
+    setDismissed((current) => new Set(current).add(jobId))
   }
 
   return (
@@ -238,7 +248,7 @@ function Meeting({ connection, preview = false, onLeave }: { connection: Connect
 
         <section className="panel research">
           <h2>Research</h2>
-          {Object.values(jobs).length === 0 && <p className="muted">Say “Decision Window, verify…”</p>}
+          {Object.values(jobs).length === 0 && <p className="muted">Ask a question naturally; ready answers queue here.</p>}
           {Object.values(jobs).map((job) => (
             <article key={job.job_id}>
               <strong>{job.route} · {job.status.toUpperCase()}</strong>
@@ -248,8 +258,23 @@ function Meeting({ connection, preview = false, onLeave }: { connection: Connect
           ))}
           {answers.map((card) => (
             <article key={card.job_id} className="answer">
+              <strong>Answer ready</strong>
+              <small>{card.question}</small>
               <p>{card.concise_answer}</p>
               <small>{Math.round(card.confidence * 100)}% confidence</small>
+              <div className="queue-actions">
+                <button
+                  type="button"
+                  disabled={preview || isSending || dismissed.has(card.job_id)}
+                  onClick={() => void control('control.speak', card.job_id)}
+                >Speak</button>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={preview || isSending || dismissed.has(card.job_id)}
+                  onClick={() => void dismiss(card.job_id)}
+                >{dismissed.has(card.job_id) ? 'Dismissed' : 'Dismiss'}</button>
+              </div>
               {card.citations.map((source) => (
                 <button
                   key={source.url}

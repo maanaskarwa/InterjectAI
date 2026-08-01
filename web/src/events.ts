@@ -19,13 +19,14 @@ export type ResearchJob = {
   job_id: string
   asker_name: string
   query: string
-  route: 'QUICK'
+  route: 'INSTANT' | 'QUICK'
   status: 'searching' | 'completed' | 'expired' | 'failed'
   deadline_at_ms: number
 }
 
 export type Answer = {
   job_id: string
+  question: string
   concise_answer: string
   confidence: number
   citations: Array<{ title: string; url: string }>
@@ -68,7 +69,7 @@ export function research(payload: Record<string, unknown>): ResearchJob | null {
     job_id,
     asker_name: text(payload.asker_name),
     query: text(payload.query),
-    route: 'QUICK',
+    route: text(payload.route) === 'INSTANT' ? 'INSTANT' : 'QUICK',
     status: (text(payload.status) || 'searching') as ResearchJob['status'],
     deadline_at_ms: number(payload.deadline_at_ms),
   }
@@ -87,6 +88,7 @@ export function answer(payload: Record<string, unknown>): Answer | null {
     : []
   return {
     job_id,
+    question: text(payload.question),
     concise_answer: text(payload.concise_answer),
     confidence: number(payload.confidence),
     citations,

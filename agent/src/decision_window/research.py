@@ -32,7 +32,7 @@ class _Synthesis(BaseModel):
 
 
 class _Route(BaseModel):
-    action: Literal["IGNORE", "QUICK"]
+    action: Literal["IGNORE", "INSTANT", "QUICK"]
     query: str = ""
     confidence: float = Field(ge=0, le=1)
     impact: float | Literal["low", "medium", "high", "Low", "Medium", "High"]
@@ -96,23 +96,26 @@ class ResearchEngine:
         except Exception:
             route = None
 
-        if route and route.action == "QUICK" and route.confidence >= 0.55 and route.query.strip():
+        if route and route.action in ("INSTANT", "QUICK") and route.confidence >= 0.55 and route.query.strip():
             query = route.query.strip()
+            selected_route: Literal["INSTANT", "QUICK"] = route.action
             speak_if_ready = route.speak_if_ready
         elif fallback_query:
             query = fallback_query
+            selected_route = "QUICK"
             speak_if_ready = True
         else:
             return None
 
         query_key = " ".join(query.lower().split())
-        if now - self._recent_queries.get(query_key, -100) < 15:
+        if now - self._recent_queries.get(query_key, -1000) < 120:
             return None
         self._recent_queries[query_key] = now
         return await self.run(
             query,
             transcript.speaker_id,
             transcript.speaker_name,
+            route=selected_route,
             transcript_context=context,
             speak_if_ready=speak_if_ready,
         )
@@ -129,11 +132,12 @@ class ResearchEngine:
                     {
                         "role": "system",
                         "content": (
-                            "You route research during a live meeting. Use QUICK only when current public evidence "
-                            "would resolve a factual uncertainty relevant to the discussion. Rewrite references into "
-                            "a standalone web-search query using the transcript. Set speak_if_ready only when the result "
-                            "was directly requested or could materially change the decision. Otherwise IGNORE. Return "
-                            "JSON: action, query, confidence, impact, speak_if_ready, reason."
+                            "You route questions during a live meeting. Use INSTANT for stable common-knowledge facts "
+                            "that do not need current evidence. Use QUICK only when current public evidence would resolve "
+                            "a factual uncertainty relevant to the discussion. IGNORE turns that are not questions, are "
+                            "irrelevant, or were already answered in the transcript. Rewrite references into a standalone "
+                            "query using the transcript. Set speak_if_ready only when directly requested or decision-critical. "
+                            "Return JSON: action (IGNORE, INSTANT, or QUICK), query, confidence, impact, speak_if_ready, reason."
                         ),
                     },
                     {
@@ -158,12 +162,14 @@ class ResearchEngine:
         asker_id: str,
         asker_name: str,
         *,
+        route: Literal["INSTANT", "QUICK"] = "QUICK",
         transcript_context: str = "",
         speak_if_ready: bool = True,
     ) -> AnswerPayload | None:
         job_id = uuid.uuid4().hex
         created = time.time_ns() // 1_000_000
-        deadline = created + self._deadline_ms
+        budget = 8 if route == "INSTANT" else self._deadline_seconds
+        deadline = created + round(budget * 1000)
 
         def job(status: Literal["searching", "completed", "expired", "failed"]) -> ResearchPayload:
             return ResearchPayload(
@@ -171,6 +177,7 @@ class ResearchEngine:
                 asker_id=asker_id,
                 asker_name=asker_name,
                 query=query,
+                route=route,
                 status=status,
                 created_at_ms=created,
                 deadline_at_ms=deadline,
@@ -178,15 +185,16 @@ class ResearchEngine:
 
         await self._publish(RoomEvent.now("research.started", job("searching")))
         try:
-            async with self._slots, asyncio.timeout(self._deadline_seconds):
-                citations = await self._search(query)
-                if not citations:
-                    raise RuntimeError("No reliable public evidence found")
-                result = await self._synthesize(
-                    query,
-                    citations,
-                    transcript_context or self._transcript_snapshot(),
-                )
+            async with self._slots, asyncio.timeout(budget):
+                context = transcript_context or self._transcript_snapshot()
+                if route == "INSTANT":
+                    citations: list[Citation] = []
+                    result = await self._instant(query, context)
+                else:
+                    citations = await self._search(query)
+                    if not citations:
+                        raise RuntimeError("No reliable public evidence found")
+                    result = await self._synthesize(query, citations, context)
                 answer = AnswerPayload(
                     job_id=job_id,
                     asker_id=asker_id,
@@ -199,6 +207,15 @@ class ResearchEngine:
                     speak=speak_if_ready and result.confidence >= 0.75,
                 )
                 await self._publish(RoomEvent.now("answer.card", answer))
+                self._history.append(TranscriptPayload(
+                    event_id=f"answer-{job_id}",
+                    speaker_id="decision-window",
+                    speaker_name="Decision Window",
+                    track_sid="agent",
+                    text=answer.concise_answer,
+                    sequence=0,
+                    start_ms=time.time_ns() // 1_000_000,
+                ))
                 await self._publish(RoomEvent.now("research.completed", job("completed")))
                 return answer
         except TimeoutError:
@@ -248,6 +265,29 @@ class ResearchEngine:
                 base_url=os.getenv("OPENAI_BASE_URL") or None,
             )
         return self._openai
+
+    async def _instant(self, query: str, transcript_context: str) -> _Synthesis:
+        response = await self._openai_client().chat.completions.create(
+            model=self._model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Answer a stable common-knowledge question directly. Use the meeting transcript to resolve "
+                        "references. Return JSON with concise_answer (one sentence), full_answer, and confidence from 0 to 1."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps({"question": query, "meeting_transcript": transcript_context}),
+                },
+            ],
+            response_format={"type": "json_object"},
+        )
+        content = response.choices[0].message.content
+        if not content:
+            raise RuntimeError("OpenAI returned no instant answer")
+        return _Synthesis.model_validate_json(content)
 
     async def _synthesize(
         self,

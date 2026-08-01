@@ -192,6 +192,16 @@ button.danger {
   margin-top: 8px;
 }
 
+.queue-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.queue-actions button {
+  padding: 7px 10px;
+}
+
 .source {
   width: 100%;
   padding: 0;

@@ -16,7 +16,9 @@
         "research.expired",
         "research.failed",
         "answer.card",
+        "control.dismiss",
         "control.research",
+        "control.speak",
         "control.stop"
       ]
     },

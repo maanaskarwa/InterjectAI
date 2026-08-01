@@ -31,7 +31,7 @@ class FakeCompletions:
         user = messages[-1]
         assert isinstance(system, dict) and isinstance(user, dict)
 
-        if "route research" in str(system.get("content")):
+        if "You route questions" in str(system.get("content")):
             route_input = json.loads(str(user.get("content")))
             self.router_inputs.append(route_input)
             latest = str(route_input["latest_turn"])
@@ -51,7 +51,7 @@ class FakeCompletions:
                     else "whether LiveKit can be self-hosted"
                 )
                 route = {
-                    "action": "QUICK",
+                    "action": "INSTANT" if "capital" in latest else "QUICK",
                     "query": query,
                     "confidence": 0.9,
                     "impact": 0.8,
@@ -112,6 +112,8 @@ class ResearchTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(answer)
         assert answer is not None
         self.assertEqual(answer.question, "what the capital of India is")
+        self.assertEqual(answer.citations, [])
+        self.assertEqual(self.events[0].payload["route"], "INSTANT")
 
     async def test_implicit_router_receives_meeting_context(self) -> None:
         model = FakeOpenAI()
@@ -154,6 +156,13 @@ class ResearchTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(answer)
         self.assertEqual(self.events[-1].type, "research.expired")
         self.assertNotIn("answer.card", [event.type for event in self.events])
+
+    async def test_recent_query_is_not_repeated(self) -> None:
+        engine = ResearchEngine(self.publish, brightdata=FakeBrightData(), openai=FakeOpenAI())
+        transcript = self.transcript("Does LiveKit support self-hosting?")
+        self.assertIsNotNone(await engine.handle_transcript(transcript))
+        self.assertIsNone(await engine.handle_transcript(transcript))
+        self.assertEqual([event.type for event in self.events].count("research.started"), 1)
 
     async def test_non_trigger_is_ignored(self) -> None:
         engine = ResearchEngine(self.publish, brightdata=FakeBrightData(), openai=FakeOpenAI())

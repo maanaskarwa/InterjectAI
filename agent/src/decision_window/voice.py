@@ -8,15 +8,16 @@ class VoiceOutput:
         self._session = session
         self._handle: Any | None = None
 
-    async def say(self, text: str) -> None:
+    async def say(self, text: str) -> bool:
         words = text.split()
         if not words:
-            return
+            return False
         self.interrupt()
-        handle = self._session.say(" ".join(words[:25]), allow_interruptions=True)
+        handle = self._session.say(" ".join(words[:40]), allow_interruptions=True)
         self._handle = handle
         try:
             await handle.wait_for_playout()
+            return not handle.interrupted
         finally:
             if self._handle is handle:
                 self._handle = None

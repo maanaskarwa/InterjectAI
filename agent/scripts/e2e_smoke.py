@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 
 SCENARIOS = {
+    "basic": ["What is the capital of India?"],
     "direct": ["Decision Window, can you verify whether LiveKit supports self hosting?"],
     "implicit": [
         "We are discussing whether LiveKit fits our deployment needs.",
@@ -148,9 +149,26 @@ async def run(scenario: str, base_url: str) -> dict[str, Any]:
             if terminal_event["type"] != "research.completed":
                 raise RuntimeError(terminal_event)
             cards = [event["payload"] for event in events if event["type"] == "answer.card"]
+            jobs = [event["payload"] for event in events if event["type"] == "research.started"]
             finals = [event["payload"] for event in events if event["type"] == "transcript.final"]
-            if not cards or not cards[-1].get("citations") or len(finals) < len(utterances):
-                raise RuntimeError({"cards": cards, "finals": finals})
+            if not cards or not jobs or len(finals) < len(utterances):
+                raise RuntimeError({"cards": cards, "jobs": jobs, "finals": finals})
+            if scenario == "basic" and jobs[-1].get("route") != "INSTANT":
+                raise RuntimeError(f"Basic fact took {jobs[-1].get('route')} route")
+            if jobs[-1].get("route") == "QUICK" and not cards[-1].get("citations"):
+                raise RuntimeError(f"QUICK answer has no citations: {cards[-1]}")
+            await asyncio.sleep(1)
+            if agent_audio.is_set():
+                raise RuntimeError("Agent spoke before the answer was released")
+            await room.local_participant.publish_data(
+                json.dumps({
+                    "type": "control.speak",
+                    "ts_ms": time.time_ns() // 1_000_000,
+                    "payload": {"job_id": cards[-1]["job_id"]},
+                }).encode(),
+                reliable=True,
+                topic="dw.event",
+            )
             await asyncio.wait_for(agent_audio.wait(), timeout=25)
 
         return {

@@ -34,10 +34,13 @@ Reusable live checks:
 
 ```text
 cd agent
+uv run python scripts/e2e_smoke.py basic
 uv run python scripts/e2e_smoke.py direct
 uv run python scripts/e2e_smoke.py implicit
 uv run python scripts/e2e_smoke.py ignore
 ```
+
+Answers appear as cards and remain visible. Use each card’s **Speak** or **Dismiss** control; dismissing removes only the queued voice delivery. “Decision Window, answer the previous question” releases the oldest queued answer.
 
 ## Local telemetry
 
