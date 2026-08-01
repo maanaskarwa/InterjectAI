@@ -1,0 +1,6 @@
+{
+  "include": ["src", "tests"],
+  "executionEnvironments": [{ "root": ".", "extraPaths": ["src"] }],
+  "venvPath": ".",
+  "venv": ".venv"
+}

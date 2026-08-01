@@ -62,6 +62,7 @@ function App() {
   const [name, setName] = useState('')
   const [room, setRoom] = useState(defaultRoom)
   const [connection, setConnection] = useState<Connection | null>(null)
+  const [preview, setPreview] = useState(() => new URLSearchParams(location.search).has('demo'))
   const [error, setError] = useState('')
 
   const join = async (create: boolean) => {
@@ -72,6 +73,15 @@ function App() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to join')
     }
+  }
+
+  if (preview) {
+    const demo = { token: '', serverUrl: '', room: defaultRoom, name: 'Maanas', identity: 'maanas-demo' }
+    return (
+      <LiveKitRoom serverUrl="" token="" connect={false} audio={false} video={false}>
+        <Meeting connection={demo} preview onLeave={() => setPreview(false)} />
+      </LiveKitRoom>
+    )
   }
 
   if (connection) {
@@ -86,7 +96,7 @@ function App() {
         data-lk-theme="default"
       >
         <RoomAudioRenderer />
-        <Meeting connection={connection} />
+        <Meeting connection={connection} onLeave={() => setConnection(null)} />
       </LiveKitRoom>
     )
   }
@@ -101,6 +111,7 @@ function App() {
         <div className="actions">
           <button type="button" onClick={() => void join(true)}>Create room</button>
           <button type="button" className="secondary" onClick={() => void join(false)}>Join room</button>
+          <button type="button" className="secondary" onClick={() => setPreview(true)}>Preview UI</button>
         </div>
         {error && <p className="error">{error}</p>}
       </form>
@@ -108,15 +119,23 @@ function App() {
   )
 }
 
-function Meeting({ connection }: { connection: Connection }) {
+function Meeting({ connection, preview = false, onLeave }: { connection: Connection; preview?: boolean; onLeave: () => void }) {
   const room = useRoomContext()
   const participants = useParticipants()
   const { localParticipant, isMicrophoneEnabled } = useLocalParticipant()
   const [partials, setPartials] = useState<Record<string, Transcript>>({})
-  const [finals, setFinals] = useState<Transcript[]>([])
-  const [jobs, setJobs] = useState<Record<string, ResearchJob>>({})
-  const [answers, setAnswers] = useState<Answer[]>([])
-  const [agent, setAgent] = useState('waiting')
+  const [finals, setFinals] = useState<Transcript[]>(preview ? [
+    { event_id: 'demo-1', speaker_name: 'Alice', track_sid: 'alice', text: 'Does LiveKit support self-hosting?', sequence: 1, start_ms: 1 },
+    { event_id: 'demo-2', speaker_name: 'Maanas', track_sid: 'maanas', text: 'Decision Window, verify that before we decide.', sequence: 1, start_ms: 2 },
+  ] : [])
+  const [jobs, setJobs] = useState<Record<string, ResearchJob>>(preview ? {
+    demo: { job_id: 'demo', asker_name: 'Maanas', query: 'whether LiveKit supports self-hosting', route: 'QUICK', status: 'completed', deadline_at_ms: Date.now() + 5000 },
+  } : {})
+  const [answers, setAnswers] = useState<Answer[]>(preview ? [{
+    job_id: 'demo', concise_answer: 'LiveKit can be self-hosted; its documentation provides deployment guides and infrastructure requirements.', confidence: 0.93,
+    citations: [{ title: 'LiveKit self-hosting documentation', url: 'https://docs.livekit.io/home/self-hosting/' }],
+  }] : [])
+  const [agent, setAgent] = useState(preview ? 'online' : 'waiting')
   const [now, setNow] = useState(Date.now())
 
   useEffect(() => {
@@ -189,18 +208,20 @@ function Meeting({ connection }: { connection: Connection }) {
       </header>
 
       <nav className="actions">
-        <button type="button" onClick={() => void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}>
+        <button type="button" disabled={preview} onClick={() => void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}>
           {isMicrophoneEnabled ? 'Mute' : 'Unmute'}
         </button>
-        <button type="button" className="secondary" disabled={!latest || isSending} onClick={() => void control('control.research')}>Research last turn</button>
-        <button type="button" className="danger" onClick={() => void control('control.stop')}>Stop agent</button>
-        <button type="button" className="secondary" onClick={() => void room.disconnect()}>Leave</button>
+        <button type="button" className="secondary" disabled={preview || !latest || isSending} onClick={() => void control('control.research')}>Research last turn</button>
+        <button type="button" className="danger" disabled={preview} onClick={() => void control('control.stop')}>Stop agent</button>
+        <button type="button" className="secondary" onClick={() => preview ? onLeave() : void room.disconnect()}>Leave</button>
       </nav>
 
       <div className="grid">
         <section className="panel participants">
           <h2>Participants</h2>
-          {participants.map((participant) => (
+          {preview ? (
+            <><p><span className="dot speaking" />Maanas</p><p><span className="dot" />Alice</p><p><span className="dot" />Decision Window</p></>
+          ) : participants.map((participant) => (
             <p key={participant.sid}><span className={participant.isSpeaking ? 'dot speaking' : 'dot'} />{participant.name || participant.identity}</p>
           ))}
         </section>

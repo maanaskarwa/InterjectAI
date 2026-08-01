@@ -3,8 +3,8 @@ import json
 import unittest
 from types import SimpleNamespace
 
-from decision_window import ResearchEngine, parse_query
 from decision_window.contracts import RoomEvent, TranscriptPayload
+from decision_window.research import ResearchEngine, parse_query
 
 
 class FakeBrightData:

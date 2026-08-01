@@ -1,6 +1,0 @@
-{
-  "include": ["agent/src", "agent/tests"],
-  "extraPaths": ["agent/src"],
-  "venvPath": "agent",
-  "venv": ".venv"
-}
