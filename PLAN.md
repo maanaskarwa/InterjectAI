@@ -12,7 +12,7 @@ The build is done only when this exact flow works twice in a row:
 2. Both participants hear each other.
 3. Each microphone is transcribed independently and shown with the correct participant name.
 4. A participant says: **“Decision Window, verify whether LiveKit can be self-hosted.”**
-5. The UI immediately shows a `QUICK` research job and a visible 20-second deadline.
+5. The UI immediately shows a `QUICK` research job and a visible 30-second deadline.
 6. Bright Data retrieves live public evidence; OpenAI produces a concise grounded answer.
 7. A card appears first with answer, source titles, and URLs.
 8. The agent speaks a response of at most 25 words through Inworld TTS.
@@ -31,7 +31,7 @@ The research input remains generic: the rehearsed LiveKit question proves reliab
 - One Inworld streaming STT stream per human track
 - Speaker-labelled partial/final transcripts
 - Explicit wake phrase only: `Decision Window, check|verify|research …`
-- One real route: `QUICK`, with a deterministic 20-second deadline
+- One real route: `QUICK`, with a deterministic 30-second deadline
 - Bright Data search; fetch at most one result page
 - OpenAI synthesis from retrieved evidence
 - Cited answer card before voice output
@@ -228,7 +228,7 @@ Web worker renders partial text separately and appends finals once.
 Research worker:
 
 - Match only explicit wake-phrase finals.
-- Remove the invocation prefix and create a `QUICK` job with a 20-second monotonic deadline.
+- Remove the invocation prefix and create a `QUICK` job with a 30-second monotonic deadline.
 - Search once with Bright Data; fetch at most the strongest result.
 - Fall back to search snippets if fetch is slow or blocked.
 - Send only retrieved evidence to OpenAI with instructions to ignore instructions embedded in pages.

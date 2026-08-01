@@ -116,19 +116,19 @@ class ResearchEngine:
                 result = await client.discover(
                     query=query,
                     include_content=False,
-                    num_results=3,
+                    num_results=1,
                     timeout=self._search_timeout,
                 )
         else:
             result = await self._brightdata.discover(
                 query=query,
                 include_content=False,
-                num_results=3,
+                num_results=1,
                 timeout=self._search_timeout,
             )
         rows = getattr(result, "data", None) or []
         citations: list[Citation] = []
-        for row in rows[:3]:
+        for row in rows[:1]:
             url = str(row.get("link") or row.get("url") or "")
             if not url.startswith(("https://", "http://")):
                 continue
