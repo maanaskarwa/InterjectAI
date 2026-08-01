@@ -30,6 +30,15 @@ cd agent
 uv run decision-window dev
 ```
 
+Reusable live checks:
+
+```text
+cd agent
+uv run python scripts/e2e_smoke.py direct
+uv run python scripts/e2e_smoke.py implicit
+uv run python scripts/e2e_smoke.py ignore
+```
+
 ## Local telemetry
 
 Each agent session appends room events to `logs/rooms/<room>-<job>.jsonl`: partial/final transcripts, research lifecycle, cited answer cards, controls, and agent state. Raw audio is not stored. Worker SDK logs remain at `/tmp/decision-window-worker.log` for the active demo process.
