@@ -9,7 +9,7 @@ Today’s scope and gates are in [`PLAN.md`](PLAN.md).
 Do not paste credentials into chat or commit them.
 
 1. Copy root `.env.example` to root `.env` and fill it. The Inworld value must be the rotated replacement credential without the `Basic` prefix.
-2. For local Pages Function testing, link that ignored file with `ln -s ../.env web/.dev.vars`.
+2. For local Pages Function testing, link it with `ln -s ../.env web/.dev.vars`.
 3. In Cloudflare Pages, add `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` as encrypted server-side secrets. They must never use a `VITE_` prefix.
 4. Keep the Python worker local. Cloudflare serves the web app and the small `/api/token` function.
 

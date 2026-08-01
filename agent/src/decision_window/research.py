@@ -131,7 +131,10 @@ class ResearchEngine:
 
     async def _synthesize(self, query: str, citations: list[Citation]) -> _Synthesis:
         if self._openai is None:
-            self._openai = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
+            self._openai = AsyncOpenAI(
+                api_key=os.environ["OPENAI_API_KEY"],
+                base_url=os.getenv("OPENAI_BASE_URL") or None,
+            )
         evidence = [source.model_dump(mode="json") for source in citations]
         response = await self._openai.chat.completions.create(
             model=self._model,
