@@ -6,6 +6,7 @@ import os
 import re
 import time
 import uuid
+from collections import deque
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
@@ -28,6 +29,15 @@ class _Synthesis(BaseModel):
     concise_answer: str
     full_answer: str
     confidence: float = Field(ge=0, le=1)
+
+
+class _Route(BaseModel):
+    action: Literal["IGNORE", "QUICK"]
+    query: str = ""
+    confidence: float = Field(ge=0, le=1)
+    impact: float = Field(ge=0, le=1)
+    speak_if_ready: bool = False
+    reason: str = ""
 
 
 def _request_text(text: str) -> str | None:
@@ -53,6 +63,7 @@ class ResearchEngine:
         openai: Any | None = None,
         deadline_seconds: float = 12,
         model: str | None = None,
+        router_model: str | None = None,
     ) -> None:
         self._publish = publish
         if deadline_seconds <= 0:
@@ -63,22 +74,93 @@ class ResearchEngine:
         self._deadline_ms = round(deadline_seconds * 1000)
         self._search_timeout = max(1, round(deadline_seconds - 2))
         self._model = model or os.getenv("OPENAI_MODEL", "gpt-5-mini")
+        self._router_model = router_model or os.getenv("OPENAI_ROUTER_MODEL") or self._model
         self._slots = asyncio.Semaphore(2)
+        self._router_lock = asyncio.Lock()
         self._armed_speakers: dict[str, float] = {}
+        self._history: deque[TranscriptPayload] = deque(maxlen=16)
+        self._recent_queries: dict[str, float] = {}
 
     async def handle_transcript(self, transcript: TranscriptPayload) -> AnswerPayload | None:
         now = time.monotonic()
-        query = parse_query(transcript.text)
+        fallback_query = parse_query(transcript.text)
         if is_wake_only(transcript.text):
             self._armed_speakers[transcript.speaker_id] = now + 10
-            return None
-        if not query and self._armed_speakers.pop(transcript.speaker_id, 0) >= now:
-            query = _request_text(transcript.text)
-        if not query:
-            return None
-        return await self.run(query, transcript.speaker_id, transcript.speaker_name)
+        elif not fallback_query and self._armed_speakers.pop(transcript.speaker_id, 0) >= now:
+            fallback_query = _request_text(transcript.text)
 
-    async def run(self, query: str, asker_id: str, asker_name: str) -> AnswerPayload | None:
+        self._history.append(transcript)
+        context = self._transcript_snapshot()
+        try:
+            route = await self._route(transcript, context)
+        except Exception:
+            route = None
+
+        if route and route.action == "QUICK" and route.confidence >= 0.55 and route.query.strip():
+            query = route.query.strip()
+            speak_if_ready = route.speak_if_ready
+        elif fallback_query:
+            query = fallback_query
+            speak_if_ready = True
+        else:
+            return None
+
+        query_key = " ".join(query.lower().split())
+        if now - self._recent_queries.get(query_key, -100) < 15:
+            return None
+        self._recent_queries[query_key] = now
+        return await self.run(
+            query,
+            transcript.speaker_id,
+            transcript.speaker_name,
+            transcript_context=context,
+            speak_if_ready=speak_if_ready,
+        )
+
+    def _transcript_snapshot(self) -> str:
+        return "\n".join(f"{turn.speaker_name}: {turn.text}" for turn in self._history)
+
+    async def _route(self, transcript: TranscriptPayload, context: str) -> _Route:
+        client = self._openai_client()
+        async with self._router_lock:
+            response = await client.chat.completions.create(
+                model=self._router_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You route research during a live meeting. Use QUICK only when current public evidence "
+                            "would resolve a factual uncertainty relevant to the discussion. Rewrite references into "
+                            "a standalone web-search query using the transcript. Set speak_if_ready only when the result "
+                            "was directly requested or could materially change the decision. Otherwise IGNORE. Return "
+                            "JSON: action, query, confidence, impact, speak_if_ready, reason."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps({
+                            "meeting_transcript": context,
+                            "latest_speaker": transcript.speaker_name,
+                            "latest_turn": transcript.text,
+                        }),
+                    },
+                ],
+                response_format={"type": "json_object"},
+            )
+        content = response.choices[0].message.content
+        if not content:
+            raise RuntimeError("Router returned no decision")
+        return _Route.model_validate_json(content)
+
+    async def run(
+        self,
+        query: str,
+        asker_id: str,
+        asker_name: str,
+        *,
+        transcript_context: str = "",
+        speak_if_ready: bool = True,
+    ) -> AnswerPayload | None:
         job_id = uuid.uuid4().hex
         created = time.time_ns() // 1_000_000
         deadline = created + self._deadline_ms
@@ -100,7 +182,11 @@ class ResearchEngine:
                 citations = await self._search(query)
                 if not citations:
                     raise RuntimeError("No reliable public evidence found")
-                result = await self._synthesize(query, citations)
+                result = await self._synthesize(
+                    query,
+                    citations,
+                    transcript_context or self._transcript_snapshot(),
+                )
                 answer = AnswerPayload(
                     job_id=job_id,
                     asker_id=asker_id,
@@ -110,7 +196,7 @@ class ResearchEngine:
                     full_answer=result.full_answer,
                     confidence=result.confidence,
                     citations=citations,
-                    speak=result.confidence >= 0.75,
+                    speak=speak_if_ready and result.confidence >= 0.75,
                 )
                 await self._publish(RoomEvent.now("answer.card", answer))
                 await self._publish(RoomEvent.now("research.completed", job("completed")))
@@ -155,14 +241,22 @@ class ResearchEngine:
             ))
         return citations
 
-    async def _synthesize(self, query: str, citations: list[Citation]) -> _Synthesis:
+    def _openai_client(self) -> Any:
         if self._openai is None:
             self._openai = AsyncOpenAI(
                 api_key=os.environ["OPENAI_API_KEY"],
                 base_url=os.getenv("OPENAI_BASE_URL") or None,
             )
+        return self._openai
+
+    async def _synthesize(
+        self,
+        query: str,
+        citations: list[Citation],
+        transcript_context: str,
+    ) -> _Synthesis:
         evidence = [source.model_dump(mode="json") for source in citations]
-        response = await self._openai.chat.completions.create(
+        response = await self._openai_client().chat.completions.create(
             model=self._model,
             messages=[
                 {
@@ -173,7 +267,14 @@ class ResearchEngine:
                         "full_answer, and confidence from 0 to 1."
                     ),
                 },
-                {"role": "user", "content": json.dumps({"question": query, "evidence": evidence})},
+                {
+                    "role": "user",
+                    "content": json.dumps({
+                        "question": query,
+                        "meeting_transcript": transcript_context,
+                        "evidence": evidence,
+                    }),
+                },
             ],
             response_format={"type": "json_object"},
         )

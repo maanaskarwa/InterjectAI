@@ -21,18 +21,57 @@ class FakeBrightData:
 
 
 class FakeCompletions:
-    async def create(self, **_: object) -> object:
-        content = json.dumps({
-            "concise_answer": "LiveKit can be self-hosted using its open-source server deployment options.",
-            "full_answer": "LiveKit documents self-hosted deployment options.",
-            "confidence": 0.92,
-        })
+    def __init__(self) -> None:
+        self.router_inputs: list[dict[str, object]] = []
+
+    async def create(self, **kwargs: object) -> object:
+        messages = kwargs.get("messages")
+        assert isinstance(messages, list)
+        system = messages[0]
+        user = messages[-1]
+        assert isinstance(system, dict) and isinstance(user, dict)
+
+        if "route research" in str(system.get("content")):
+            route_input = json.loads(str(user.get("content")))
+            self.router_inputs.append(route_input)
+            latest = str(route_input["latest_turn"])
+            if latest in ("Decision Window.", "What about LiveKit?", "We are discussing LiveKit."):
+                route = {
+                    "action": "IGNORE",
+                    "query": "",
+                    "confidence": 0.9,
+                    "impact": 0.1,
+                    "speak_if_ready": False,
+                    "reason": "No standalone research request yet.",
+                }
+            else:
+                query = (
+                    "what the capital of India is"
+                    if "capital" in latest
+                    else "whether LiveKit can be self-hosted"
+                )
+                route = {
+                    "action": "QUICK",
+                    "query": query,
+                    "confidence": 0.9,
+                    "impact": 0.8,
+                    "speak_if_ready": True,
+                    "reason": "A factual uncertainty is relevant to the meeting.",
+                }
+            content = json.dumps(route)
+        else:
+            content = json.dumps({
+                "concise_answer": "LiveKit can be self-hosted using its open-source server deployment options.",
+                "full_answer": "LiveKit documents self-hosted deployment options.",
+                "confidence": 0.92,
+            })
         return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
 
 
 class FakeOpenAI:
     def __init__(self) -> None:
-        self.chat = SimpleNamespace(completions=FakeCompletions())
+        self.completions = FakeCompletions()
+        self.chat = SimpleNamespace(completions=self.completions)
 
 
 class ResearchTests(unittest.IsolatedAsyncioTestCase):
@@ -73,6 +112,16 @@ class ResearchTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(answer)
         assert answer is not None
         self.assertEqual(answer.question, "what the capital of India is")
+
+    async def test_implicit_router_receives_meeting_context(self) -> None:
+        model = FakeOpenAI()
+        engine = ResearchEngine(self.publish, brightdata=FakeBrightData(), openai=model)
+        self.assertIsNone(await engine.handle_transcript(self.transcript("We are discussing LiveKit.")))
+        answer = await engine.handle_transcript(self.transcript("Does it support self-hosting?"))
+        self.assertIsNotNone(answer)
+        context = str(model.completions.router_inputs[-1]["meeting_transcript"])
+        self.assertIn("We are discussing LiveKit.", context)
+        self.assertIn("Does it support self-hosting?", context)
 
     async def test_cited_answer(self) -> None:
         engine = ResearchEngine(
