@@ -4,6 +4,8 @@ A deadline-aware voice research participant for live meetings.
 
 Today’s scope and gates are in [`PLAN.md`](PLAN.md).
 
+Preview: <https://decision-window.pages.dev/?demo=1>
+
 ## Credential setup
 
 Do not paste credentials into chat or commit them.

@@ -2,7 +2,7 @@
 
 **Target:** a live, public MVP in 6–7 hours.
 
-**Current state:** repository contains `Ideation Chat.pdf`, this plan, and three sanitized Inworld TTS examples. Node, pnpm, Python, uv, git, and ripgrep are installed. Inworld API access is available but its exposed credential must be rotated before smoke-testing; LiveKit, Bright Data, OpenAI, and Cloudflare credentials still need setup. LiveKit CLI and Wrangler are not installed.
+**Current state:** zero-key preview deployed at `https://decision-window.pages.dev/?demo=1`; focused web UI, Cloudflare token function, per-track Inworld STT, bounded Bright Data/OpenAI research, TTS interruption, and worker wiring are implemented and checked. The critical path is rotating exposed credentials, adding OpenAI credentials/base URL, setting Cloudflare LiveKit secrets, and running the first real two-browser test.
 
 ## End-of-day acceptance test
 
