@@ -122,6 +122,8 @@ Required event types:
 - `research.expired`
 - `research.failed`
 - `answer.card`
+- `control.research`
+- `control.stop`
 
 Minimum fields:
 

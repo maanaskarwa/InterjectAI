@@ -14,6 +14,8 @@ EventType = Literal[
     "research.expired",
     "research.failed",
     "answer.card",
+    "control.research",
+    "control.stop",
 ]
 
 

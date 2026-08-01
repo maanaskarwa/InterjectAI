@@ -15,7 +15,9 @@
         "research.completed",
         "research.expired",
         "research.failed",
-        "answer.card"
+        "answer.card",
+        "control.research",
+        "control.stop"
       ]
     },
     "ts_ms": {
