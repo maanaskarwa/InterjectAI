@@ -35,7 +35,7 @@ class _Route(BaseModel):
     action: Literal["IGNORE", "QUICK"]
     query: str = ""
     confidence: float = Field(ge=0, le=1)
-    impact: float = Field(ge=0, le=1)
+    impact: float | Literal["low", "medium", "high", "Low", "Medium", "High"]
     speak_if_ready: bool = False
     reason: str = ""
 
