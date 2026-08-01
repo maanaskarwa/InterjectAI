@@ -109,13 +109,23 @@ class ResearchEngine:
 
     async def _search(self, query: str) -> list[Citation]:
         if self._brightdata is None:
-            self._brightdata = BrightDataClient(token=os.environ["BRIGHTDATA_API_TOKEN"])
-        result = await self._brightdata.discover(
-            query=query,
-            include_content=True,
-            num_results=3,
-            timeout=self._search_timeout,
-        )
+            async with BrightDataClient(
+                token=os.environ["BRIGHTDATA_API_TOKEN"],
+                auto_create_zones=False,
+            ) as client:
+                result = await client.discover(
+                    query=query,
+                    include_content=True,
+                    num_results=3,
+                    timeout=self._search_timeout,
+                )
+        else:
+            result = await self._brightdata.discover(
+                query=query,
+                include_content=True,
+                num_results=3,
+                timeout=self._search_timeout,
+            )
         rows = getattr(result, "data", None) or []
         citations: list[Citation] = []
         for row in rows[:3]:
