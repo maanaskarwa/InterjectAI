@@ -15,8 +15,14 @@ from .research import ResearchEngine
 from .transcriber import RoomTranscriber
 from .voice import VoiceOutput
 
-load_dotenv(Path(__file__).resolve().parents[3] / ".env")
+ROOT = Path(__file__).resolve().parents[3]
+load_dotenv(ROOT / ".env")
 server = AgentServer()
+
+
+def append_line(path: Path, line: str) -> None:
+    with path.open("a", encoding="utf-8") as output:
+        output.write(line)
 
 
 def configured_deadline() -> float:
@@ -56,8 +62,18 @@ async def decision_window(ctx: JobContext) -> None:
 
     voice = VoiceOutput(session)
     background: set[asyncio.Task[Any]] = set()
+    safe_room = "".join(character if character.isalnum() or character in "-_" else "_" for character in ctx.room.name)[:80]
+    log_directory = ROOT / "logs" / "rooms"
+    log_directory.mkdir(parents=True, exist_ok=True)
+    log_path = log_directory / f"{safe_room}-{ctx.job.id}.jsonl"
+    log_lock = asyncio.Lock()
+
+    async def store(event: RoomEvent) -> None:
+        async with log_lock:
+            await asyncio.to_thread(append_line, log_path, event.model_dump_json() + "\n")
 
     async def publish(event: RoomEvent) -> None:
+        await store(event)
         await ctx.room.local_participant.publish_data(
             event.model_dump_json().encode(),
             reliable=True,
@@ -92,6 +108,7 @@ async def decision_window(ctx: JobContext) -> None:
             event = RoomEvent.model_validate_json(packet.data)
         except ValueError:
             return
+        spawn(store(event))
         if event.type == "control.stop":
             voice.interrupt()
         elif event.type == "control.research":
@@ -110,7 +127,11 @@ async def decision_window(ctx: JobContext) -> None:
         await asyncio.gather(*background, return_exceptions=True)
 
     ctx.add_shutdown_callback(shutdown)
-    await publish(RoomEvent.now("agent.state", {"status": "online"}))
+    await publish(RoomEvent.now("agent.state", {
+        "status": "online",
+        "room": ctx.room.name,
+        "event_log": str(log_path.relative_to(ROOT)),
+    }))
 
 
 def run() -> None:

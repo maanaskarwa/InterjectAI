@@ -22,5 +22,6 @@ dist/
 .idea/
 .vscode/
 
-# Demo output
+# Local telemetry / demo output
+logs/
 output.*

@@ -58,7 +58,21 @@ class ResearchTests(unittest.IsolatedAsyncioTestCase):
             parse_query("Decision Window, verify whether LiveKit can be self-hosted?"),
             "whether LiveKit can be self-hosted",
         )
+        self.assertEqual(
+            parse_query("Decision Window, can you verify what the capital of India is?"),
+            "what the capital of India is",
+        )
+        self.assertEqual(parse_query("Session window, look up LiveKit"), "LiveKit")
+        self.assertIsNone(parse_query("Decision Window."))
         self.assertIsNone(parse_query("Can LiveKit be self-hosted?"))
+
+    async def test_split_wake_phrase_uses_next_turn(self) -> None:
+        engine = ResearchEngine(self.publish, brightdata=FakeBrightData(), openai=FakeOpenAI())
+        self.assertIsNone(await engine.handle_transcript(self.transcript("Decision Window.")))
+        answer = await engine.handle_transcript(self.transcript("Verify what the capital of India is."))
+        self.assertIsNotNone(answer)
+        assert answer is not None
+        self.assertEqual(answer.question, "what the capital of India is")
 
     async def test_cited_answer(self) -> None:
         engine = ResearchEngine(

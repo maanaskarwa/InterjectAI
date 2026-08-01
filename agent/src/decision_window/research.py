@@ -16,8 +16,10 @@ from pydantic import BaseModel, Field
 from .contracts import AnswerPayload, Citation, ResearchPayload, RoomEvent, TranscriptPayload
 
 Publish = Callable[[RoomEvent], Awaitable[None]]
-TRIGGER = re.compile(
-    r"^\s*decision\s+window\s*[,;:—-]?\s*(?:please\s+)?(?:check|verify|research)\s+(?P<query>.+?)\s*$",
+WAKE = re.compile(r"^\s*(?:decision|session)\s+window\b(?P<request>.*)$", re.IGNORECASE)
+REQUEST_PREFIX = re.compile(
+    r"^\s*[,;:.!?—-]*\s*(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?"
+    r"(?:(?:check|verify|research|look\s+up|find\s+out)\b\s*)?",
     re.IGNORECASE,
 )
 
@@ -28,11 +30,18 @@ class _Synthesis(BaseModel):
     confidence: float = Field(ge=0, le=1)
 
 
+def _request_text(text: str) -> str | None:
+    query = REQUEST_PREFIX.sub("", text, count=1).strip().rstrip("?.!")
+    return query or None
+
+
 def parse_query(text: str) -> str | None:
-    match = TRIGGER.match(text)
-    if not match:
-        return None
-    return match.group("query").strip().rstrip("?.!") or None
+    match = WAKE.match(text)
+    return _request_text(match.group("request")) if match else None
+
+
+def is_wake_only(text: str) -> bool:
+    return WAKE.match(text) is not None and parse_query(text) is None
 
 
 class ResearchEngine:
@@ -55,9 +64,16 @@ class ResearchEngine:
         self._search_timeout = max(1, round(deadline_seconds - 2))
         self._model = model or os.getenv("OPENAI_MODEL", "gpt-5-mini")
         self._slots = asyncio.Semaphore(2)
+        self._armed_speakers: dict[str, float] = {}
 
     async def handle_transcript(self, transcript: TranscriptPayload) -> AnswerPayload | None:
+        now = time.monotonic()
         query = parse_query(transcript.text)
+        if is_wake_only(transcript.text):
+            self._armed_speakers[transcript.speaker_id] = now + 10
+            return None
+        if not query and self._armed_speakers.pop(transcript.speaker_id, 0) >= now:
+            query = _request_text(transcript.text)
         if not query:
             return None
         return await self.run(query, transcript.speaker_id, transcript.speaker_name)
