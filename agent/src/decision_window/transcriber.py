@@ -36,7 +36,7 @@ class ParticipantTranscriber:
         self.track_sid = track_sid
         self._publish = publish
         self._on_speech = on_speech
-        self._stt = stt_service or inworld.STT()
+        self._stt = stt_service or inworld.STT(enable_voice_profile=False)
         self._sequence = 0
         self._stream_started_ms = time.time_ns() // 1_000_000
 
