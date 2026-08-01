@@ -30,12 +30,13 @@ The research input remains generic: the rehearsed LiveKit question proves reliab
 - Local Python worker connected outbound to LiveKit Cloud
 - One Inworld streaming STT stream per human track
 - Speaker-labelled partial/final transcripts
-- Explicit wake phrase only: `Decision Window, check|verify|research …`
+- LLM router evaluates every final turn against the last 16 speaker-labelled turns
+- Explicit wake phrase remains a deterministic fallback, not the primary route
 - One real route: `QUICK`, with a deterministic 30-second deadline
-- Bright Data search; fetch at most one result page
-- OpenAI synthesis from retrieved evidence
+- Bright Data search with one result to absorb provider tail latency
+- OpenAI synthesis receives retrieved evidence plus the same transcript snapshot
 - Cited answer card before voice output
-- Inworld TTS, one short answer at a time
+- Inworld TTS-2, one short answer at a time
 - Automatic barge-in on human speech-start/interim speech
 - Expired-result suppression
 - Manual **Research last turn** and **Stop agent** controls as demo fallbacks
@@ -43,7 +44,6 @@ The research input remains generic: the rehearsed LiveKit question proves reliab
 ### Not required
 
 - Local/private RAG or repository ingestion
-- Automatic research-opportunity detection
 - `INSTANT` or real multi-query `DEEP` execution
 - Automatic meeting-stage classification
 - Tenstorrent integration
@@ -227,18 +227,19 @@ Web worker renders partial text separately and appends finals once.
 
 Research worker:
 
-- Match only explicit wake-phrase finals.
-- Remove the invocation prefix and create a `QUICK` job with a 30-second monotonic deadline.
-- Search once with Bright Data; fetch at most the strongest result.
-- Fall back to search snippets if fetch is slow or blocked.
-- Send only retrieved evidence to OpenAI with instructions to ignore instructions embedded in pages.
+- Route every final turn through a structured LLM decision: `IGNORE` or `QUICK`.
+- Give the router the last 16 speaker-labelled turns so it can resolve implicit references.
+- Keep explicit wake matching only as a fallback when routing fails.
+- Create `QUICK` jobs with a 30-second monotonic deadline.
+- Retrieve one Bright Data search result without full-page content.
+- Send retrieved evidence and the transcript snapshot to OpenAI while treating pages as untrusted data.
 - Require concise answer, detailed answer, confidence, title, and URL.
 - On timeout, publish `research.expired`; never produce speakable output.
 - Keep at most two jobs active with `asyncio.Semaphore(2)`.
 
 Integrator wires transcript → research → room data event.
 
-**Gate 3 at 3:30:** a live spoken invocation produces a real cited card. If it does not, use the manual Research button and stop all voice work until card generation passes.
+**Gate 3 at 3:30:** a live implicit contextual question and an explicit invocation each produce a real cited card; an irrelevant turn produces none. If routing fails, use the manual Research button.
 
 ### 3:30–4:20 — Voice output
 
