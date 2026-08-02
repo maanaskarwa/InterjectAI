@@ -2,6 +2,10 @@
 
 A deadline-aware voice research participant for live meetings.
 
+View the demo!
+
+https://github.com/user-attachments/assets/c51c44c1-fa12-453b-8201-30b8f3b24bd5
+
 Today’s scope and gates are in [`PLAN.md`](PLAN.md).
 
 Public app: <https://interjectai.pages.dev/>  
