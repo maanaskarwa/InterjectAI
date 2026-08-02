@@ -2,7 +2,7 @@
 
 **Target:** a live, public MVP in 6–7 hours.
 
-**Current state:** the public UI and token function are deployed at `https://decision-window.pages.dev/`; the Python worker runs as a managed LiveKit Cloud agent in `us-east`. Per-track Inworld STT, contextual routing, bounded Bright Data/OpenAI research, queued TTS, reconnect handling, and audio health telemetry are implemented and live-tested. Rotate any credentials that were exposed during early setup.
+**Current state:** the public UI and token function are deployed at `https://interjectai.pages.dev/` (with `https://decision-window.pages.dev/` retained as a legacy URL); the Python worker runs as a managed LiveKit Cloud agent in `us-east`. Per-track Inworld STT, contextual routing, bounded Bright Data/OpenAI research, queued TTS, reconnect handling, and audio health telemetry are implemented and live-tested. Rotate any credentials that were exposed during early setup.
 
 ## End-of-day acceptance test
 
