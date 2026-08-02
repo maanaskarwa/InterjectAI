@@ -13,7 +13,7 @@ Do not paste credentials into chat or commit them.
 1. Copy root `.env.example` to root `.env` and fill it. The Inworld value must be the rotated replacement credential without the `Basic` prefix.
 2. For local Pages Function testing, link it with `ln -s ../.env web/.dev.vars`.
 3. In Cloudflare Pages, add `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` as encrypted server-side secrets. They must never use a `VITE_` prefix.
-4. Keep the Python worker local. Cloudflare serves the web app and the small `/api/token` function.
+4. Cloudflare serves the web app and `/api/token`; LiveKit Cloud runs the persistent Python worker.
 
 ## Development
 
@@ -23,11 +23,18 @@ pnpm build
 pnpm dlx wrangler pages dev dist
 ```
 
-In another terminal:
+For local worker development:
 
 ```text
 cd agent
 uv run decision-window dev
+```
+
+Deploy the managed worker from the repository root without committing secrets:
+
+```text
+lk agent deploy --secrets-file .env --ignore-empty-secrets agent
+lk agent status agent
 ```
 
 Reusable live checks:
@@ -44,6 +51,12 @@ uv run python scripts/e2e_smoke.py ignore
 
 Answers appear as cards and remain visible. A short human-first grace period suppresses research when another participant answers. Use each card’s **Speak** or **Dismiss** control; dismissing removes only the queued voice delivery. “Decision Window, answer the previous question” releases the oldest queued answer.
 
-## Local telemetry
+## Telemetry
 
-Each agent session appends room events to `logs/rooms/<room>-<job>.jsonl`: partial/final transcripts, research lifecycle, cited answer cards, controls, and agent state. Raw audio is not stored. Worker SDK logs remain at `/tmp/decision-window-worker.log` for the active demo process.
+Managed-worker logs include room events, per-track mute state, five-second audio-frame health, research lifecycle, and reconnect state:
+
+```text
+lk agent logs agent
+```
+
+Local sessions also append `logs/rooms/<room>-<job>.jsonl`; local SDK logs use `/tmp/decision-window-worker.log`. Raw audio is never stored.

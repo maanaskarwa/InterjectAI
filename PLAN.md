@@ -2,7 +2,7 @@
 
 **Target:** a live, public MVP in 6–7 hours.
 
-**Current state:** zero-key preview deployed at `https://decision-window.pages.dev/?demo=1`; focused web UI, Cloudflare token function, per-track Inworld STT, bounded Bright Data/OpenAI research, TTS interruption, and worker wiring are implemented and checked. The critical path is rotating exposed credentials, adding OpenAI credentials/base URL, setting Cloudflare LiveKit secrets, and running the first real two-browser test.
+**Current state:** the public UI and token function are deployed at `https://decision-window.pages.dev/`; the Python worker runs as a managed LiveKit Cloud agent in `us-east`. Per-track Inworld STT, contextual routing, bounded Bright Data/OpenAI research, queued TTS, reconnect handling, and audio health telemetry are implemented and live-tested. Rotate any credentials that were exposed during early setup.
 
 ## End-of-day acceptance test
 
@@ -15,7 +15,7 @@ The build is done only when this exact flow works twice in a row:
 5. The UI immediately shows a `QUICK` research job and a visible 30-second deadline.
 6. Bright Data retrieves live public evidence; OpenAI produces a concise grounded answer.
 7. A card appears first with answer, source titles, and URLs.
-8. The agent speaks a response of at most 25 words through Inworld TTS.
+8. A participant releases the queued answer and hears a concise response through Inworld TTS.
 9. A human starts speaking while the agent speaks; the agent stops.
 10. A deliberately delayed result is marked `EXPIRED` and is never spoken.
 
@@ -27,7 +27,7 @@ The research input remains generic: the rehearsed LiveKit question proves reliab
 
 - React/Vite frontend on Cloudflare Pages with one `/api/token` Pages Function
 - LiveKit Cloud audio room with separate participant tracks
-- Local Python worker connected outbound to LiveKit Cloud
+- Managed Python worker deployed to LiveKit Cloud; local mode remains available for development
 - One Inworld streaming STT stream per human track
 - Speaker-labelled partial/final transcripts
 - LLM router evaluates every final turn against the last 16 speaker-labelled turns
@@ -46,14 +46,13 @@ The research input remains generic: the rehearsed LiveKit question proves reliab
 ### Not required
 
 - Local/private RAG or repository ingestion
-- `INSTANT` or real multi-query `DEEP` execution
+- Real multi-query `DEEP` execution
 - Automatic meeting-stage classification
 - Tenstorrent integration
 - Zoom/Meet/Teams integration
 - Diarization or shared-microphone support
 - Video, recording, login, database, persistent history, vector database
 - Standalone backend beyond the minimal Cloudflare token function
-- Production authentication or deployment of the Python worker
 
 Add excluded features only after the acceptance test passes twice.
 
@@ -61,14 +60,14 @@ Add excluded features only after the acceptance test passes twice.
 
 ```text
 Browser A mic ─┐
-Browser B mic ─┼─> LiveKit Cloud <─> local Python worker
+Browser B mic ─┼─> LiveKit Cloud <─> managed Python worker
                │                         ├─ one Inworld STT stream per human track
 Pages web + /api/token <────┘             ├─ Bright Data Discover
   receives room data events              ├─ OpenAI grounded synthesis
                                          └─ Inworld TTS agent audio
 ```
 
-LiveKit is the realtime transport and event channel, not the RAG/data layer. Bright Data supplies public-web evidence. New LiveKit sandboxes are deprecated, so a minimal Cloudflare Pages Function mints participant tokens with server-side secrets; there is still no separately deployed application backend.
+LiveKit is the realtime transport, event channel, and managed worker host—not the RAG/data layer. Bright Data supplies public-web evidence. A minimal Cloudflare Pages Function mints participant tokens with server-side secrets; there is no separate application backend.
 
 ## Repository shape
 

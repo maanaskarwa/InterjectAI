@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -15,8 +16,9 @@ from .research import ResearchEngine
 from .transcriber import RoomTranscriber
 from .voice import VoiceOutput
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(os.getenv("DECISION_WINDOW_ROOT", str(Path(__file__).resolve().parents[3])))
 load_dotenv(ROOT / ".env")
+logger = logging.getLogger(__name__)
 server = AgentServer()
 
 
@@ -74,19 +76,24 @@ async def decision_window(ctx: JobContext) -> None:
     log_lock = asyncio.Lock()
 
     async def store(event: RoomEvent) -> None:
+        line = event.model_dump_json()
+        logger.info("room_event %s", line)
         async with log_lock:
-            await asyncio.to_thread(append_line, log_path, event.model_dump_json() + "\n")
+            await asyncio.to_thread(append_line, log_path, line + "\n")
 
     async def publish(event: RoomEvent) -> None:
         if event.type == "answer.card":
             answer = AnswerPayload.model_validate(event.payload)
             pending_answers[answer.job_id] = answer
         await store(event)
-        await ctx.room.local_participant.publish_data(
-            event.model_dump_json().encode(),
-            reliable=True,
-            topic="dw.event",
-        )
+        try:
+            await ctx.room.local_participant.publish_data(
+                event.model_dump_json().encode(),
+                reliable=True,
+                topic="dw.event",
+            )
+        except Exception as error:
+            logger.warning("room_event_publish_failed type=%s error=%s", event.type, error)
 
     research = ResearchEngine(publish, deadline_seconds=configured_deadline())
 
@@ -110,7 +117,17 @@ async def decision_window(ctx: JobContext) -> None:
     def spawn(coroutine: Any) -> asyncio.Task[Any]:
         task = asyncio.create_task(coroutine)
         background.add(task)
-        task.add_done_callback(background.discard)
+
+        def finish(completed: asyncio.Task[Any]) -> None:
+            background.discard(completed)
+            if not completed.cancelled() and (error := completed.exception()) is not None:
+                logger.error(
+                    "background_task_failed error=%s",
+                    error,
+                    exc_info=(type(error), error, error.__traceback__),
+                )
+
+        task.add_done_callback(finish)
         return task
 
     async def route_after_pause(speaker_id: str) -> None:
@@ -155,6 +172,18 @@ async def decision_window(ctx: JobContext) -> None:
 
     transcriber = RoomTranscriber(ctx.room, on_transcript, on_human_speech)
     transcriber.start()
+
+    @ctx.room.on("reconnecting")
+    def on_reconnecting() -> None:
+        spawn(store(RoomEvent.now("agent.state", {"status": "reconnecting", "room": ctx.room.name})))
+
+    @ctx.room.on("reconnected")
+    def on_reconnected() -> None:
+        async def recover() -> None:
+            await transcriber.restart_tracks()
+            await publish(RoomEvent.now("agent.state", {"status": "online", "room": ctx.room.name}))
+
+        spawn(recover())
 
     @ctx.room.on("data_received")
     def on_data(packet: rtc.DataPacket) -> None:

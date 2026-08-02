@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -15,6 +16,7 @@ from .contracts import RoomEvent, TranscriptPayload
 
 Publish = Callable[[RoomEvent], Awaitable[None]]
 SpeechCallback = Callable[[], None]
+logger = logging.getLogger(__name__)
 
 
 def should_transcribe(identity: str) -> bool:
@@ -50,8 +52,23 @@ class ParticipantTranscriber:
         speech = self._stt.stream()
 
         async def feed() -> None:
+            frames = 0
+            reported_at = time.monotonic()
             async for frame in audio:
                 speech.push_frame(frame.frame)
+                frames += 1
+                now = time.monotonic()
+                if now - reported_at >= 5:
+                    logger.info(
+                        "audio_health participant=%s track=%s frames=%d interval_seconds=%.1f muted=%s",
+                        self.participant_id,
+                        self.track_sid,
+                        frames,
+                        now - reported_at,
+                        track.muted,
+                    )
+                    frames = 0
+                    reported_at = now
             speech.end_input()
 
         producer = asyncio.create_task(feed())
@@ -99,6 +116,8 @@ class RoomTranscriber:
     def start(self) -> None:
         self._room.on("track_subscribed", self._on_track_subscribed)
         self._room.on("track_unsubscribed", self._on_track_unsubscribed)
+        self._room.on("track_muted", self._on_track_muted)
+        self._room.on("track_unmuted", self._on_track_unmuted)
         self._room.on("participant_disconnected", self._on_participant_disconnected)
         for participant in self._room.remote_participants.values():
             for publication in participant.track_publications.values():
@@ -123,6 +142,12 @@ class RoomTranscriber:
             self._publish,
             self._on_speech,
         )
+        logger.info(
+            "track_subscribed participant=%s track=%s muted=%s",
+            participant.identity,
+            track_sid,
+            publication.muted,
+        )
         task = asyncio.create_task(worker.run(track))
         self._tasks[track_sid] = (participant.identity, task)
         task.add_done_callback(lambda finished, sid=track_sid: self._remove_finished(sid, finished))
@@ -131,6 +156,13 @@ class RoomTranscriber:
         current = self._tasks.get(track_sid)
         if current and current[1] is task:
             self._tasks.pop(track_sid, None)
+        if not task.cancelled() and (error := task.exception()) is not None:
+            logger.error(
+                "transcriber_failed track=%s error=%s",
+                track_sid,
+                error,
+                exc_info=(type(error), error, error.__traceback__),
+            )
 
     def _on_track_unsubscribed(
         self,
@@ -139,6 +171,20 @@ class RoomTranscriber:
         _participant: rtc.RemoteParticipant,
     ) -> None:
         self.stop_track(publication.sid)
+
+    def _on_track_muted(
+        self,
+        participant: rtc.RemoteParticipant,
+        publication: rtc.RemoteTrackPublication,
+    ) -> None:
+        logger.info("track_muted participant=%s track=%s", participant.identity, publication.sid)
+
+    def _on_track_unmuted(
+        self,
+        participant: rtc.RemoteParticipant,
+        publication: rtc.RemoteTrackPublication,
+    ) -> None:
+        logger.info("track_unmuted participant=%s track=%s", participant.identity, publication.sid)
 
     def _on_participant_disconnected(self, participant: rtc.RemoteParticipant) -> None:
         for track_sid, (identity, _) in list(self._tasks.items()):
@@ -149,6 +195,13 @@ class RoomTranscriber:
         entry = self._tasks.pop(track_sid, None)
         if entry:
             entry[1].cancel()
+
+    async def restart_tracks(self) -> None:
+        await self.close()
+        for participant in self._room.remote_participants.values():
+            for publication in participant.track_publications.values():
+                if publication.track is not None:
+                    self._on_track_subscribed(publication.track, publication, participant)
 
     async def close(self) -> None:
         tasks = [task for _, task in self._tasks.values()]
