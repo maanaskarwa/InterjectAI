@@ -1,4 +1,4 @@
-# Decision Window — Today’s Build Plan
+# Interject — Today’s Build Plan
 
 **Target:** a live, public MVP in 6–7 hours.
 
@@ -11,7 +11,7 @@ The build is done only when this exact flow works twice in a row:
 1. Two browsers join the same public, audio-only room with different names.
 2. Both participants hear each other.
 3. Each microphone is transcribed independently and shown with the correct participant name.
-4. A participant says: **“Decision Window, verify whether LiveKit can be self-hosted.”**
+4. A participant asks: **“Can LiveKit be self-hosted?”**
 5. The UI immediately shows a `QUICK` research job and a visible 30-second deadline.
 6. Bright Data retrieves live public evidence; OpenAI produces a concise grounded answer.
 7. A card appears first with answer, source titles, and URLs.
@@ -257,7 +257,7 @@ Media worker:
 
 **Gate 4 at 4:20:** both browsers hear a released answer; speaking over it stops it while leaving it available to retry.
 
-### 4:20–5:00 — Decision Window behavior
+### 4:20–5:00 — Interject behavior
 
 Integrator:
 

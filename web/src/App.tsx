@@ -105,7 +105,7 @@ function App() {
     <main className="lobby">
       <form className="card" onSubmit={(event) => event.preventDefault()}>
         <p className="eyebrow">Realtime meeting research</p>
-        <h1>Decision Window</h1>
+        <h1>Interject</h1>
         <label>Display name<input value={name} onChange={(event) => setName(event.target.value)} autoFocus /></label>
         <label>Room code<input value={room} onChange={(event) => setRoom(event.target.value)} /></label>
         <div className="actions">
@@ -126,7 +126,7 @@ function Meeting({ connection, preview = false, onLeave }: { connection: Connect
   const [partials, setPartials] = useState<Record<string, Transcript>>({})
   const [finals, setFinals] = useState<Transcript[]>(preview ? [
     { event_id: 'demo-1', speaker_name: 'Alice', track_sid: 'alice', text: 'Does LiveKit support self-hosting?', sequence: 1, start_ms: 1, received_ms: 1 },
-    { event_id: 'demo-2', speaker_name: 'Maanas', track_sid: 'maanas', text: 'Decision Window, verify that before we decide.', sequence: 1, start_ms: 2, received_ms: 2 },
+    { event_id: 'demo-2', speaker_name: 'Maanas', track_sid: 'maanas', text: 'Can someone verify that before we decide?', sequence: 1, start_ms: 2, received_ms: 2 },
   ] : [])
   const [jobs, setJobs] = useState<Record<string, ResearchJob>>(preview ? {
     demo: { job_id: 'demo', asker_name: 'Maanas', query: 'whether LiveKit supports self-hosting', route: 'QUICK', status: 'completed', deadline_at_ms: Date.now() + 5000 },
@@ -213,8 +213,8 @@ function Meeting({ connection, preview = false, onLeave }: { connection: Connect
   return (
     <main className="meeting">
       <header>
-        <div><p className="eyebrow">Room {connection.room}</p><h1>Decision Window</h1></div>
-        <span className={`agent ${agent === 'online' ? 'online' : ''}`}>Agent: {agent}</span>
+        <div><p className="eyebrow">Room {connection.room}</p><h1>Interject</h1></div>
+        <span className={`agent ${agent === 'online' ? 'online' : ''}`}>Interject: {agent}</span>
       </header>
 
       <nav className="actions">
@@ -222,7 +222,7 @@ function Meeting({ connection, preview = false, onLeave }: { connection: Connect
           {isMicrophoneEnabled ? 'Mute' : 'Unmute'}
         </button>
         <button type="button" className="secondary" disabled={preview || !latest || isSending} onClick={() => void control('control.research')}>Research last turn</button>
-        <button type="button" className="danger" disabled={preview} onClick={() => void control('control.stop')}>Stop agent</button>
+        <button type="button" className="danger" disabled={preview} onClick={() => void control('control.stop')}>Stop Interject</button>
         <button type="button" className="secondary" onClick={() => preview ? onLeave() : void room.disconnect()}>Leave</button>
       </nav>
 
@@ -230,9 +230,9 @@ function Meeting({ connection, preview = false, onLeave }: { connection: Connect
         <section className="panel participants">
           <h2>Participants</h2>
           {preview ? (
-            <><p><span className="dot speaking" />Maanas</p><p><span className="dot" />Alice</p><p><span className="dot" />Decision Window</p></>
+            <><p><span className="dot speaking" />Maanas</p><p><span className="dot" />Alice</p><p><span className="dot" />Interject</p></>
           ) : participants.map((participant) => (
-            <p key={participant.sid}><span className={participant.isSpeaking ? 'dot speaking' : 'dot'} />{participant.name || participant.identity}</p>
+            <p key={participant.sid}><span className={participant.isSpeaking ? 'dot speaking' : 'dot'} />{participant.identity.startsWith('agent-') ? 'Interject' : participant.name || participant.identity}</p>
           ))}
         </section>
 

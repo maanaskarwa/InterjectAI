@@ -1,4 +1,4 @@
-# Decision Window
+# Interject
 
 A deadline-aware voice research participant for live meetings.
 
@@ -50,7 +50,7 @@ uv run python scripts/e2e_smoke.py mute-cycle
 uv run python scripts/e2e_smoke.py ignore
 ```
 
-Answers appear as cards and remain visible. A short human-first grace period suppresses research when another participant answers. Use each card’s **Speak** or **Dismiss** control; dismissing removes only the queued voice delivery. “Decision Window, answer the previous question” releases the oldest queued answer.
+Answers appear as cards and remain visible. A short human-first grace period suppresses research when another participant answers. Use each card’s **Speak** or **Dismiss** control; dismissing removes only the queued voice delivery.
 
 ## Telemetry
 
