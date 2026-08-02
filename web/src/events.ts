@@ -13,6 +13,7 @@ export type Transcript = {
   text: string
   sequence: number
   start_ms: number
+  received_ms: number
 }
 
 export type ResearchJob = {
@@ -48,7 +49,7 @@ export function decodeEvent(data: Uint8Array): DwEvent | null {
   }
 }
 
-export function transcript(payload: Record<string, unknown>): Transcript | null {
+export function transcript(payload: Record<string, unknown>, received_ms: number): Transcript | null {
   const event_id = text(payload.event_id)
   const track_sid = text(payload.track_sid)
   if (!event_id || !track_sid) return null
@@ -59,6 +60,7 @@ export function transcript(payload: Record<string, unknown>): Transcript | null 
     text: text(payload.text),
     sequence: number(payload.sequence),
     start_ms: number(payload.start_ms),
+    received_ms,
   }
 }
 

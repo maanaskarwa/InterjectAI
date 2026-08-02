@@ -125,8 +125,8 @@ function Meeting({ connection, preview = false, onLeave }: { connection: Connect
   const { localParticipant, isMicrophoneEnabled } = useLocalParticipant()
   const [partials, setPartials] = useState<Record<string, Transcript>>({})
   const [finals, setFinals] = useState<Transcript[]>(preview ? [
-    { event_id: 'demo-1', speaker_name: 'Alice', track_sid: 'alice', text: 'Does LiveKit support self-hosting?', sequence: 1, start_ms: 1 },
-    { event_id: 'demo-2', speaker_name: 'Maanas', track_sid: 'maanas', text: 'Decision Window, verify that before we decide.', sequence: 1, start_ms: 2 },
+    { event_id: 'demo-1', speaker_name: 'Alice', track_sid: 'alice', text: 'Does LiveKit support self-hosting?', sequence: 1, start_ms: 1, received_ms: 1 },
+    { event_id: 'demo-2', speaker_name: 'Maanas', track_sid: 'maanas', text: 'Decision Window, verify that before we decide.', sequence: 1, start_ms: 2, received_ms: 2 },
   ] : [])
   const [jobs, setJobs] = useState<Record<string, ResearchJob>>(preview ? {
     demo: { job_id: 'demo', asker_name: 'Maanas', query: 'whether LiveKit supports self-hosting', route: 'QUICK', status: 'completed', deadline_at_ms: Date.now() + 5000 },
@@ -149,7 +149,7 @@ function Meeting({ connection, preview = false, onLeave }: { connection: Connect
     if (!event) return
 
     if (event.type === 'transcript.partial' || event.type === 'transcript.final') {
-      const line = transcript(event.payload)
+      const line = transcript(event.payload, event.ts_ms)
       if (!line) return
       if (event.type === 'transcript.partial') {
         setPartials((current) => ({ ...current, [line.track_sid]: line }))
@@ -181,7 +181,7 @@ function Meeting({ connection, preview = false, onLeave }: { connection: Connect
 
   const { send, isSending } = useDataChannel(topic, onMessage)
   const orderedTranscripts = useMemo(
-    () => [...finals, ...Object.values(partials)].sort((a, b) => a.start_ms - b.start_ms),
+    () => [...finals, ...Object.values(partials)].sort((a, b) => a.received_ms - b.received_ms),
     [finals, partials],
   )
   const latest = finals.at(-1)?.text || ''
