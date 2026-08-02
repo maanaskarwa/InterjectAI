@@ -49,7 +49,13 @@ async function getConnection(room: string, name: string, create: boolean): Promi
       dispatchAgent: create,
     }),
   })
-  if (!response.ok) throw new Error(`Token request failed (${response.status})`)
+  if (!response.ok) {
+    const errorBody: unknown = await response.json().catch(() => null)
+    const message = errorBody && typeof errorBody === 'object' && 'error' in errorBody
+      ? String(errorBody.error)
+      : `Token request failed (${response.status})`
+    throw new Error(message)
+  }
 
   const body = (await response.json()) as Record<string, unknown>
   const token = String(body.participantToken || body.participant_token || body.token || '')

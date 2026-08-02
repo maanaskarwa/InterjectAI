@@ -24,12 +24,17 @@ export async function onRequestPost({ request, env }: Context): Promise<Response
   if (!value || typeof value !== 'object') return json({ error: 'Invalid request' }, 400)
 
   const body = value as Record<string, unknown>
-  const roomName = typeof body.roomName === 'string' ? body.roomName : ''
+  const roomCode = typeof body.roomName === 'string' ? body.roomName.trim() : ''
+  const roomSlug = roomCode
+    .replace(/^decision-window-/i, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 60)
+  const roomName = `decision-window-${roomSlug}`
   const participantName = typeof body.participantName === 'string' ? body.participantName.trim() : ''
   const participantIdentity = typeof body.participantIdentity === 'string' ? body.participantIdentity : ''
-  if (!/^decision-window-[a-z0-9_-]{1,60}$/i.test(roomName)) {
-    return json({ error: 'Room must start with decision-window-' }, 400)
-  }
+  if (!roomSlug) return json({ error: 'Enter a room code' }, 400)
   if (!participantName || participantName.length > 80 || !/^[a-z0-9-]{1,80}$/i.test(participantIdentity)) {
     return json({ error: 'Invalid participant' }, 400)
   }
@@ -55,5 +60,5 @@ export async function onRequestPost({ request, env }: Context): Promise<Response
     })
   }
 
-  return json({ serverUrl: env.LIVEKIT_URL, participantToken: await token.toJwt() })
+  return json({ roomName, serverUrl: env.LIVEKIT_URL, participantToken: await token.toJwt() })
 }
