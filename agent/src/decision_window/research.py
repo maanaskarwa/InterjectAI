@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import re
 import time
@@ -17,6 +18,7 @@ from pydantic import BaseModel, Field
 from .contracts import AnswerPayload, Citation, ResearchPayload, RoomEvent, TranscriptPayload
 
 Publish = Callable[[RoomEvent], Awaitable[None]]
+logger = logging.getLogger(__name__)
 WAKE = re.compile(r"^\s*(?:decision|session)\s+window\b(?P<request>.*)$", re.IGNORECASE)
 REQUEST_PREFIX = re.compile(
     r"^\s*[,;:.!?—-]*\s*(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?"
@@ -54,6 +56,15 @@ def is_wake_only(text: str) -> bool:
     return WAKE.match(text) is not None and parse_query(text) is None
 
 
+def _looks_like_new_question(text: str) -> bool:
+    return bool(re.search(
+        r"\?|\b(?:who|what|when|where|why|how|can|could|does|do|is|are|should|would|"
+        r"check|verify|research|find|look up|need to know)\b",
+        text,
+        re.IGNORECASE,
+    ))
+
+
 class ResearchEngine:
     def __init__(
         self,
@@ -80,6 +91,7 @@ class ResearchEngine:
         self._armed_speakers: dict[str, float] = {}
         self._history: deque[TranscriptPayload] = deque(maxlen=16)
         self._recent_queries: dict[str, float] = {}
+        self._active_queries: dict[str, str] = {}
 
     def record_transcript(self, transcript: TranscriptPayload) -> None:
         self._history.append(transcript)
@@ -100,9 +112,31 @@ class ResearchEngine:
         if record:
             self.record_transcript(transcript)
         context = self._transcript_snapshot()
+        if self._active_queries and not fallback_query and not _looks_like_new_question(transcript.text):
+            logger.info(
+                "router_skipped reason=no_new_question latest_turn=%r active_queries=%d",
+                transcript.text,
+                len(self._active_queries),
+            )
+            return None
+
+        route_started = time.monotonic()
         try:
             route = await self._route(transcript, context)
-        except Exception:
+            logger.info(
+                "router_timing duration_ms=%d action=%s confidence=%.2f latest_turn=%r",
+                round((time.monotonic() - route_started) * 1000),
+                route.action,
+                route.confidence,
+                transcript.text,
+            )
+        except Exception as error:
+            logger.warning(
+                "router_failed duration_ms=%d error=%s latest_turn=%r",
+                round((time.monotonic() - route_started) * 1000),
+                error,
+                transcript.text,
+            )
             route = None
 
         if route and route.action in ("INSTANT", "QUICK") and route.confidence >= 0.55 and route.query.strip():
@@ -145,8 +179,9 @@ class ResearchEngine:
                             "that do not need current evidence. Use QUICK only when current public evidence would resolve "
                             "a factual uncertainty relevant to the discussion. IGNORE turns that are not questions, are "
                             "irrelevant, were already answered, or were followed by another human answering the question. "
-                            "Rewrite references into a standalone "
-                            "query using the transcript. Set speak_if_ready only when directly requested or decision-critical. "
+                            "The latest turn must itself introduce a new question or factual uncertainty; never repeat, merge, "
+                            "or elaborate an active research query because of filler, acknowledgement, or backchannel speech. "
+                            "Rewrite references into a standalone query using the transcript. Set speak_if_ready only when directly requested or decision-critical. "
                             "Return JSON: action (IGNORE, INSTANT, or QUICK), query, confidence, impact, speak_if_ready, reason."
                         ),
                     },
@@ -156,6 +191,7 @@ class ResearchEngine:
                             "meeting_transcript": context,
                             "latest_speaker": transcript.speaker_name,
                             "latest_turn": transcript.text,
+                            "active_research_queries": list(self._active_queries.values()),
                         }),
                     },
                 ],
@@ -193,18 +229,32 @@ class ResearchEngine:
                 deadline_at_ms=deadline,
             )
 
-        await self._publish(RoomEvent.now("research.started", job("searching")))
+        total_started = time.monotonic()
+        queue_ms = 0
+        search_ms = 0
+        synthesis_ms = 0
+        self._active_queries[job_id] = query
         try:
-            async with self._slots, asyncio.timeout(budget):
-                context = transcript_context or self._transcript_snapshot()
-                if route == "INSTANT":
-                    citations: list[Citation] = []
-                    result = await self._instant(query, context)
-                else:
-                    citations = await self._search(query)
-                    if not citations:
-                        raise RuntimeError("No reliable public evidence found")
-                    result = await self._synthesize(query, citations, context)
+            await self._publish(RoomEvent.now("research.started", job("searching")))
+            async with asyncio.timeout(budget):
+                queue_started = time.monotonic()
+                async with self._slots:
+                    queue_ms = round((time.monotonic() - queue_started) * 1000)
+                    context = transcript_context or self._transcript_snapshot()
+                    if route == "INSTANT":
+                        citations: list[Citation] = []
+                        synthesis_started = time.monotonic()
+                        result = await self._instant(query, context)
+                        synthesis_ms = round((time.monotonic() - synthesis_started) * 1000)
+                    else:
+                        search_started = time.monotonic()
+                        citations = await self._search(query)
+                        search_ms = round((time.monotonic() - search_started) * 1000)
+                        if not citations:
+                            raise RuntimeError("No reliable public evidence found")
+                        synthesis_started = time.monotonic()
+                        result = await self._synthesize(query, citations, context)
+                        synthesis_ms = round((time.monotonic() - synthesis_started) * 1000)
                 answer = AnswerPayload(
                     job_id=job_id,
                     asker_id=asker_id,
@@ -227,13 +277,51 @@ class ResearchEngine:
                     start_ms=time.time_ns() // 1_000_000,
                 ))
                 await self._publish(RoomEvent.now("research.completed", job("completed")))
+                logger.info(
+                    "research_timing job=%s route=%s outcome=completed queue_ms=%d search_ms=%d synthesis_ms=%d total_ms=%d",
+                    job_id,
+                    route,
+                    queue_ms,
+                    search_ms,
+                    synthesis_ms,
+                    round((time.monotonic() - total_started) * 1000),
+                )
                 return answer
+        except asyncio.CancelledError:
+            payload = job("failed").model_dump(mode="json")
+            payload["reason"] = "cancelled"
+            await asyncio.shield(self._publish(RoomEvent.now("research.failed", payload)))
+            logger.info(
+                "research_timing job=%s route=%s outcome=cancelled total_ms=%d",
+                job_id,
+                route,
+                round((time.monotonic() - total_started) * 1000),
+            )
+            raise
         except TimeoutError:
             await self._publish(RoomEvent.now("research.expired", job("expired")))
+            logger.info(
+                "research_timing job=%s route=%s outcome=expired queue_ms=%d search_ms=%d synthesis_ms=%d total_ms=%d",
+                job_id,
+                route,
+                queue_ms,
+                search_ms,
+                synthesis_ms,
+                round((time.monotonic() - total_started) * 1000),
+            )
         except Exception as error:
             payload = job("failed").model_dump(mode="json")
             payload["reason"] = str(error)
             await self._publish(RoomEvent.now("research.failed", payload))
+            logger.info(
+                "research_timing job=%s route=%s outcome=failed total_ms=%d error=%s",
+                job_id,
+                route,
+                round((time.monotonic() - total_started) * 1000),
+                error,
+            )
+        finally:
+            self._active_queries.pop(job_id, None)
         return None
 
     async def _search(self, query: str) -> list[Citation]:

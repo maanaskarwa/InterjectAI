@@ -43,6 +43,7 @@ Reusable live checks:
 cd agent
 uv run python scripts/e2e_smoke.py basic
 uv run python scripts/e2e_smoke.py direct
+uv run python scripts/e2e_smoke.py repeat-guard
 uv run python scripts/e2e_smoke.py implicit
 uv run python scripts/e2e_smoke.py human-answer
 uv run python scripts/e2e_smoke.py mute-cycle

@@ -143,7 +143,7 @@ async def decision_window(ctx: JobContext) -> None:
         if named and release and pending_answers:
             await deliver_answer()
         else:
-            await answer_transcript(transcript)
+            spawn(answer_transcript(transcript))
 
     def schedule_route(speaker_id: str) -> None:
         previous = routing_tasks.get(speaker_id)

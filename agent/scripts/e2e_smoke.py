@@ -29,6 +29,12 @@ SCENARIOS = {
         "Omega after unmuting.",
     ],
     "direct": ["Decision Window, can you verify whether LiveKit supports self hosting?"],
+    "repeat-guard": [
+        "Decision Window, can you verify whether LiveKit supports self hosting?",
+        "Okay.",
+        "Yeah.",
+        "That's right.",
+    ],
     "implicit": [
         "We are discussing whether LiveKit fits our deployment needs.",
         "Does it support self hosting?",
@@ -229,6 +235,11 @@ async def run(scenario: str, base_url: str) -> dict[str, Any]:
                 raise RuntimeError(f"Basic fact took {jobs[-1].get('route')} route")
             if jobs[-1].get("route") == "QUICK" and not cards[-1].get("citations"):
                 raise RuntimeError(f"QUICK answer has no citations: {cards[-1]}")
+            if scenario == "repeat-guard":
+                await asyncio.sleep(6)
+                jobs = [event["payload"] for event in events if event["type"] == "research.started"]
+                if len(jobs) != 1:
+                    raise RuntimeError(f"Filler speech started {len(jobs)} research jobs")
             await asyncio.sleep(1)
             if agent_audio.is_set():
                 raise RuntimeError("Agent spoke before the answer was released")

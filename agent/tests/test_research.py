@@ -171,6 +171,36 @@ class ResearchTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await engine.handle_transcript(question, record=False))
         self.assertEqual(self.events, [])
 
+    async def test_filler_does_not_repeat_active_research(self) -> None:
+        engine = ResearchEngine(
+            self.publish,
+            brightdata=FakeBrightData(delay=0.05),
+            openai=FakeOpenAI(),
+        )
+        active = asyncio.create_task(engine.handle_transcript(
+            self.transcript("Does LiveKit support self-hosting?"),
+        ))
+        while not self.events:
+            await asyncio.sleep(0)
+        self.assertIsNone(await engine.handle_transcript(self.transcript("Okay.")))
+        await active
+        self.assertEqual([event.type for event in self.events].count("research.started"), 1)
+
+    async def test_cancelled_research_gets_terminal_event(self) -> None:
+        engine = ResearchEngine(
+            self.publish,
+            brightdata=FakeBrightData(delay=1),
+            openai=FakeOpenAI(),
+        )
+        task = asyncio.create_task(engine.run("LiveKit", "alice-1", "Alice"))
+        while not self.events:
+            await asyncio.sleep(0)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertEqual(self.events[-1].type, "research.failed")
+        self.assertEqual(self.events[-1].payload["reason"], "cancelled")
+
     async def test_recent_query_is_not_repeated(self) -> None:
         engine = ResearchEngine(self.publish, brightdata=FakeBrightData(), openai=FakeOpenAI())
         transcript = self.transcript("Does LiveKit support self-hosting?")
