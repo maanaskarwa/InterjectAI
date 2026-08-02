@@ -81,7 +81,15 @@ class ResearchEngine:
         self._history: deque[TranscriptPayload] = deque(maxlen=16)
         self._recent_queries: dict[str, float] = {}
 
-    async def handle_transcript(self, transcript: TranscriptPayload) -> AnswerPayload | None:
+    def record_transcript(self, transcript: TranscriptPayload) -> None:
+        self._history.append(transcript)
+
+    async def handle_transcript(
+        self,
+        transcript: TranscriptPayload,
+        *,
+        record: bool = True,
+    ) -> AnswerPayload | None:
         now = time.monotonic()
         fallback_query = parse_query(transcript.text)
         if is_wake_only(transcript.text):
@@ -89,7 +97,8 @@ class ResearchEngine:
         elif not fallback_query and self._armed_speakers.pop(transcript.speaker_id, 0) >= now:
             fallback_query = _request_text(transcript.text)
 
-        self._history.append(transcript)
+        if record:
+            self.record_transcript(transcript)
         context = self._transcript_snapshot()
         try:
             route = await self._route(transcript, context)
@@ -135,7 +144,8 @@ class ResearchEngine:
                             "You route questions during a live meeting. Use INSTANT for stable common-knowledge facts "
                             "that do not need current evidence. Use QUICK only when current public evidence would resolve "
                             "a factual uncertainty relevant to the discussion. IGNORE turns that are not questions, are "
-                            "irrelevant, or were already answered in the transcript. Rewrite references into a standalone "
+                            "irrelevant, were already answered, or were followed by another human answering the question. "
+                            "Rewrite references into a standalone "
                             "query using the transcript. Set speak_if_ready only when directly requested or decision-critical. "
                             "Return JSON: action (IGNORE, INSTANT, or QUICK), query, confidence, impact, speak_if_ready, reason."
                         ),

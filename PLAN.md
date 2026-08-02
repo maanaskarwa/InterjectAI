@@ -31,6 +31,7 @@ The research input remains generic: the rehearsed LiveKit question proves reliab
 - One Inworld streaming STT stream per human track
 - Speaker-labelled partial/final transcripts
 - LLM router evaluates every final turn against the last 16 speaker-labelled turns
+- Human-first grace period defers routing while another participant answers; resolved questions are ignored
 - Explicit wake phrase remains a deterministic fallback, not the primary route
 - `INSTANT` for stable common knowledge; `QUICK` with a deterministic 30-second deadline for current evidence
 - Bright Data search with one result on `QUICK` to absorb provider tail latency

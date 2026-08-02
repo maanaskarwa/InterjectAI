@@ -35,7 +35,9 @@ class FakeCompletions:
             route_input = json.loads(str(user.get("content")))
             self.router_inputs.append(route_input)
             latest = str(route_input["latest_turn"])
-            if latest in ("Decision Window.", "What about LiveKit?", "We are discussing LiveKit."):
+            context = str(route_input["meeting_transcript"])
+            answered_by_human = "Bob: New Delhi is the capital of India." in context
+            if latest in ("Decision Window.", "What about LiveKit?", "We are discussing LiveKit.") or answered_by_human:
                 route = {
                     "action": "IGNORE",
                     "query": "",
@@ -156,6 +158,18 @@ class ResearchTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(answer)
         self.assertEqual(self.events[-1].type, "research.expired")
         self.assertNotIn("answer.card", [event.type for event in self.events])
+
+    async def test_human_answer_suppresses_agent_answer(self) -> None:
+        engine = ResearchEngine(self.publish, brightdata=FakeBrightData(), openai=FakeOpenAI())
+        question = self.transcript("What is the capital of India?")
+        human_answer = self.transcript("New Delhi is the capital of India.").model_copy(update={
+            "speaker_id": "bob-1",
+            "speaker_name": "Bob",
+        })
+        engine.record_transcript(question)
+        engine.record_transcript(human_answer)
+        self.assertIsNone(await engine.handle_transcript(question, record=False))
+        self.assertEqual(self.events, [])
 
     async def test_recent_query_is_not_repeated(self) -> None:
         engine = ResearchEngine(self.publish, brightdata=FakeBrightData(), openai=FakeOpenAI())

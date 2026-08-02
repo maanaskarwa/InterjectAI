@@ -22,6 +22,7 @@ load_dotenv(ROOT / ".env")
 
 SCENARIOS = {
     "basic": ["What is the capital of India?"],
+    "human-answer": ["What is the capital of India?"],
     "direct": ["Decision Window, can you verify whether LiveKit supports self hosting?"],
     "implicit": [
         "We are discussing whether LiveKit fits our deployment needs.",
@@ -31,15 +32,21 @@ SCENARIOS = {
 }
 
 
-async def connection_details(base_url: str, room_name: str) -> dict[str, str]:
+async def connection_details(
+    base_url: str,
+    room_name: str,
+    *,
+    participant_name: str = "E2E Test",
+    dispatch_agent: bool = True,
+) -> dict[str, str]:
     async with httpx.AsyncClient(timeout=15) as client:
         response = await client.post(
             f"{base_url.rstrip('/')}/api/token",
             json={
                 "roomName": room_name,
-                "participantName": "E2E Test",
+                "participantName": participant_name,
                 "participantIdentity": f"e2e-{uuid.uuid4().hex[:8]}",
-                "dispatchAgent": True,
+                "dispatchAgent": dispatch_agent,
             },
         )
         response.raise_for_status()
@@ -64,6 +71,7 @@ async def run(scenario: str, base_url: str) -> dict[str, Any]:
     room_name = f"decision-window-e2e-{uuid.uuid4().hex[:8]}"
     details = await connection_details(base_url, room_name)
     room = rtc.Room()
+    peer: rtc.Room | None = None
     ready = asyncio.Event()
     terminal = asyncio.Event()
     agent_audio = asyncio.Event()
@@ -119,6 +127,15 @@ async def run(scenario: str, base_url: str) -> dict[str, Any]:
     try:
         await room.connect(details["serverUrl"], details["participantToken"])
         await asyncio.wait_for(ready.wait(), timeout=30)
+        if scenario == "human-answer":
+            peer = rtc.Room()
+            peer_details = await connection_details(
+                base_url,
+                room_name,
+                participant_name="Human Answer",
+                dispatch_agent=False,
+            )
+            await peer.connect(peer_details["serverUrl"], peer_details["participantToken"])
 
         utterances = [await synthesize(text) for text in SCENARIOS[scenario]]
         source = rtc.AudioSource(24_000, 1, queue_size_ms=200)
@@ -132,10 +149,33 @@ async def run(scenario: str, base_url: str) -> dict[str, Any]:
         for utterance in utterances:
             for frame in utterance:
                 await source.capture_frame(frame)
-            for _ in range(25):
+            for _ in range(8 if scenario == "human-answer" else 25):
                 await source.capture_frame(silence)
 
-        if scenario == "ignore":
+        if scenario == "human-answer":
+            if peer is None:
+                raise RuntimeError("Second participant did not connect")
+            peer_source = rtc.AudioSource(24_000, 1, queue_size_ms=200)
+            peer_track = rtc.LocalAudioTrack.create_audio_track("microphone", peer_source)
+            await peer.local_participant.publish_track(
+                peer_track,
+                rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE),
+            )
+            await asyncio.sleep(0.5)
+            for frame in await synthesize("New Delhi is the capital of India."):
+                await peer_source.capture_frame(frame)
+            for _ in range(25):
+                await peer_source.capture_frame(silence)
+            await asyncio.sleep(8)
+            research_events = [event for event in events if event["type"].startswith("research.")]
+            speakers = {
+                event["payload"].get("speaker_name")
+                for event in events
+                if event["type"] == "transcript.final"
+            }
+            if research_events or len(speakers) < 2:
+                raise RuntimeError({"research_events": research_events, "speakers": list(speakers)})
+        elif scenario == "ignore":
             await asyncio.sleep(8)
             research_events = [event for event in events if event["type"].startswith("research.")]
             if research_events:
@@ -179,6 +219,8 @@ async def run(scenario: str, base_url: str) -> dict[str, Any]:
             "room": room_name,
         }
     finally:
+        if peer is not None:
+            await peer.disconnect()
         await room.disconnect()
         for task in readers:
             task.cancel()

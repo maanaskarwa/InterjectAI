@@ -64,6 +64,8 @@ async def decision_window(ctx: JobContext) -> None:
     voice = VoiceOutput(session)
     background: set[asyncio.Task[Any]] = set()
     pending_answers: dict[str, AnswerPayload] = {}
+    routing_buffers: dict[str, list[TranscriptPayload]] = {}
+    routing_tasks: dict[str, asyncio.Task[Any]] = {}
     delivery_lock = asyncio.Lock()
     safe_room = "".join(character if character.isalnum() or character in "-_" else "_" for character in ctx.room.name)[:80]
     log_directory = ROOT / "logs" / "rooms"
@@ -89,7 +91,7 @@ async def decision_window(ctx: JobContext) -> None:
     research = ResearchEngine(publish, deadline_seconds=configured_deadline())
 
     async def answer_transcript(transcript: TranscriptPayload) -> None:
-        await research.handle_transcript(transcript)
+        await research.handle_transcript(transcript, record=False)
 
     async def deliver_answer(job_id: str | None = None) -> None:
         if not pending_answers or (job_id is not None and job_id not in pending_answers):
@@ -105,24 +107,53 @@ async def decision_window(ctx: JobContext) -> None:
     async def manual_research(query: str, asker_id: str, asker_name: str) -> None:
         await research.run(query, asker_id, asker_name)
 
-    def spawn(coroutine: Any) -> None:
+    def spawn(coroutine: Any) -> asyncio.Task[Any]:
         task = asyncio.create_task(coroutine)
         background.add(task)
         task.add_done_callback(background.discard)
+        return task
+
+    async def route_after_pause(speaker_id: str) -> None:
+        await asyncio.sleep(2)
+        turns = routing_buffers.pop(speaker_id)
+        transcript = turns[-1].model_copy(update={
+            "text": " ".join(turn.text for turn in turns),
+            "start_ms": turns[0].start_ms,
+        })
+        command = transcript.text.lower()
+        named = "decision window" in command or "session window" in command
+        release = any(phrase in command for phrase in ("answer", "speak", "go ahead", "tell us"))
+        if named and release and pending_answers:
+            await deliver_answer()
+        else:
+            await answer_transcript(transcript)
+
+    def schedule_route(speaker_id: str) -> None:
+        previous = routing_tasks.get(speaker_id)
+        if previous is not None:
+            previous.cancel()
+        routing_tasks[speaker_id] = spawn(route_after_pause(speaker_id))
 
     async def on_transcript(event: RoomEvent) -> None:
         await publish(event)
-        if event.type == "transcript.final":
-            transcript = TranscriptPayload.model_validate(event.payload)
-            command = transcript.text.lower()
-            named = "decision window" in command or "session window" in command
-            release = any(phrase in command for phrase in ("answer", "speak", "go ahead", "tell us"))
-            if named and release and pending_answers:
-                spawn(deliver_answer())
-            else:
-                spawn(answer_transcript(transcript))
+        if event.type == "transcript.partial":
+            for speaker_id in tuple(routing_buffers):
+                schedule_route(speaker_id)
+            return
+        if event.type != "transcript.final":
+            return
+        transcript = TranscriptPayload.model_validate(event.payload)
+        research.record_transcript(transcript)
+        routing_buffers.setdefault(transcript.speaker_id, []).append(transcript)
+        for speaker_id in tuple(routing_buffers):
+            schedule_route(speaker_id)
 
-    transcriber = RoomTranscriber(ctx.room, on_transcript, voice.interrupt)
+    def on_human_speech() -> None:
+        voice.interrupt()
+        for speaker_id in tuple(routing_buffers):
+            schedule_route(speaker_id)
+
+    transcriber = RoomTranscriber(ctx.room, on_transcript, on_human_speech)
     transcriber.start()
 
     @ctx.room.on("data_received")
