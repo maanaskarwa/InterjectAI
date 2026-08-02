@@ -23,6 +23,11 @@ load_dotenv(ROOT / ".env")
 SCENARIOS = {
     "basic": ["What is the capital of India?"],
     "human-answer": ["What is the capital of India?"],
+    "mute-cycle": [
+        "Alpha before muting.",
+        "Forbidden pineapple while muted.",
+        "Omega after unmuting.",
+    ],
     "direct": ["Decision Window, can you verify whether LiveKit supports self hosting?"],
     "implicit": [
         "We are discussing whether LiveKit fits our deployment needs.",
@@ -146,11 +151,29 @@ async def run(scenario: str, base_url: str) -> dict[str, Any]:
         )
         await asyncio.sleep(1)
         silence = rtc.AudioFrame.create(24_000, 1, 2_400)
-        for utterance in utterances:
-            for frame in utterance:
+        if scenario == "mute-cycle":
+            for frame in utterances[0]:
                 await source.capture_frame(frame)
-            for _ in range(8 if scenario == "human-answer" else 25):
+            for _ in range(15):
                 await source.capture_frame(silence)
+            await source.wait_for_playout()
+            track.mute()
+            for frame in utterances[1]:
+                await source.capture_frame(frame)
+            for _ in range(15):
+                await source.capture_frame(silence)
+            await source.wait_for_playout()
+            track.unmute()
+            for frame in utterances[2]:
+                await source.capture_frame(frame)
+            for _ in range(25):
+                await source.capture_frame(silence)
+        else:
+            for utterance in utterances:
+                for frame in utterance:
+                    await source.capture_frame(frame)
+                for _ in range(8 if scenario == "human-answer" else 25):
+                    await source.capture_frame(silence)
 
         if scenario == "human-answer":
             if peer is None:
@@ -175,11 +198,20 @@ async def run(scenario: str, base_url: str) -> dict[str, Any]:
             }
             if research_events or len(speakers) < 2:
                 raise RuntimeError({"research_events": research_events, "speakers": list(speakers)})
-        elif scenario == "ignore":
+        elif scenario in ("ignore", "mute-cycle"):
             await asyncio.sleep(8)
             research_events = [event for event in events if event["type"].startswith("research.")]
             if research_events:
                 raise RuntimeError(f"Unexpected research events: {research_events}")
+            if scenario == "mute-cycle":
+                transcript_text = " ".join(
+                    str(event["payload"].get("text", ""))
+                    for event in events
+                    if event["type"] == "transcript.final"
+                ).lower()
+                resumed = "after unmuting" in transcript_text
+                if "alpha" not in transcript_text or not resumed or "pineapple" in transcript_text:
+                    raise RuntimeError(f"Mute cycle transcript: {transcript_text}")
         else:
             await asyncio.wait_for(terminal.wait(), timeout=65)
             terminal_event = next(
